@@ -9,6 +9,14 @@
 # All values that can contain credentials are required at deploy time. Do not
 # add defaults, checked-in passwords, or embedded database/cache services here.
 
+# Shared log rotation policy (OPERATIONS_SPEC.md §2.3): every service rotates
+# at 10MB, keeping 3 files, so container logs cannot fill the host disk.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   agent-server:
     image: ${SDKWORK_AGENT_SERVER_IMAGE:?set an immutable agent-server image reference}
@@ -38,3 +46,4 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=64m
       - /var/lib/sdkwork:rw,nosuid,nodev,size=256m
+    logging: *default-logging
