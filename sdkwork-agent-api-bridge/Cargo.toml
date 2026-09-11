@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-api-bridge"
 version = "0.1.0"
 edition = "2021"
 description = "Bridge layer connecting AgentKernel runtime to AgentBusiness HTTP API"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-kernel.workspace = true
 sdkwork-code-kernel.workspace = true

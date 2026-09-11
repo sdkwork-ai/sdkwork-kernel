@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-database"
 version = "0.1.0"
 edition = "2021"
 description = "Database abstraction layer for SDKWork agent session persistence"
 
+
+[lints]
+workspace = true
 [features]
 default = []
 sqlite = ["dep:rusqlite"]

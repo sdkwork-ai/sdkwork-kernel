@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-api-kernel-assembly"
 edition.workspace = true
 version.workspace = true
 description = "Generated API assembly for sdkwork-kernel application HTTP plane."
 
+
+[lints]
+workspace = true
 [lib]
 name = "sdkwork_api_kernel_assembly"
 path = "src/lib.rs"

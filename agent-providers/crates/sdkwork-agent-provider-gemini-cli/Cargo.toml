@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-gemini-cli"
 version = "0.2.0"
 edition = "2021"
 description = "Gemini CLI agent provider integration for SDKWork Agent Kernel"
 
+
+[lints]
+workspace = true
 [lib]
 name = "sdkwork_agent_provider_gemini_cli"
 path = "src/lib.rs"

@@ -1,8 +1,12 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-kernel"
 version = "0.1.0"
 edition = "2021"
 
+
+[lints]
+workspace = true
 [lib]
 name = "sdkwork_agent_kernel"
 path = "src/lib.rs"

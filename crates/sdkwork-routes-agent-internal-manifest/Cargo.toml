@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-routes-agent-internal-manifest"
 version.workspace = true
 edition.workspace = true
 description = "OpenAPI-derived route manifest for sdkwork-agent internal runtime API (kernel-owned)."
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-web-contract.workspace = true
 sdkwork-web-core.workspace = true

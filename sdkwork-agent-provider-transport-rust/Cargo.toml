@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-transport-rust"
 version = "0.1.0"
 edition = "2021"
 description = "In-process Rust runtime bridge for external agent SDK capabilities"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-kernel.workspace = true
 sdkwork-agent-provider-spi.workspace = true

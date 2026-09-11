@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-routes-agent-internal-api"
 version.workspace = true
 edition.workspace = true
 description = "Internal API route boundary for SDKWork agent runtime on application ingress."
 
+
+[lints]
+workspace = true
 [dependencies]
 axum = "0.8"
 sdkwork-agent-server.workspace = true

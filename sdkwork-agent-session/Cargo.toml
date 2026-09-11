@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-session"
 version = "0.1.0"
 edition = "2021"
 description = "Unified session manager for SDKWork agent persistence"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-kernel.workspace = true
 sdkwork-agent-database.workspace = true

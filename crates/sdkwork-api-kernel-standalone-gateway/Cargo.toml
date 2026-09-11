@@ -1,8 +1,12 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-api-kernel-standalone-gateway"
 version.workspace = true
 edition.workspace = true
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-api-kernel-assembly.workspace = true
 sdkwork-agent-server.workspace = true

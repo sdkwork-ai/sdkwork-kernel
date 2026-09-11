@@ -1,4 +1,5 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-server"
 version = "0.1.0"
 edition = "2021"
@@ -8,6 +9,9 @@ description = "SDKWork Agent Server - runnable server binary with config, prefli
 name = "sdkwork-agent-server"
 path = "src/main.rs"
 
+
+[lints]
+workspace = true
 [features]
 default = ["observability-otel"]
 observability-otel = [

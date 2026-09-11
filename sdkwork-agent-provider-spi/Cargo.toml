@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-spi"
 version = "0.1.0"
 edition = "2021"
 description = "Agent SDK adaptation SPI for binding external agent native SDKs to the SDKWork Agent Kernel"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-provider-core.workspace = true
 sdkwork-agent-kernel.workspace = true

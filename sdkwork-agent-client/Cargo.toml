@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-client"
 version = "0.1.0"
 edition = "2021"
 description = "Typed HTTP and SSE client for the SDKWork agent internal API"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-kernel.workspace = true
 sdkwork-agent-provider-claude-code.workspace = true

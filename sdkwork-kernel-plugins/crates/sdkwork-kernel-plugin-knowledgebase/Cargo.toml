@@ -1,8 +1,12 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-kernel-plugin-knowledgebase"
 version = "0.1.0"
 edition = "2021"
 
+
+[lints]
+workspace = true
 [lib]
 name = "sdkwork_kernel_plugin_knowledgebase"
 path = "src/lib.rs"

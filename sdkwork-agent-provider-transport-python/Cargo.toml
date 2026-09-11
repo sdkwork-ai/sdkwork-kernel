@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-transport-python"
 version = "0.1.0"
 edition = "2021"
 description = "Python subprocess JSON-RPC worker runtime for external agent SDK capabilities"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-provider-core.workspace = true
 sdkwork-agent-provider-transport-ipc.workspace = true

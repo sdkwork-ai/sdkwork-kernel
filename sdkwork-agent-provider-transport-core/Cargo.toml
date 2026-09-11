@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-transport-core"
 version = "0.1.0"
 edition = "2021"
 description = "Language and transport backend hosts for external agent SDK adaptation"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-provider-spi.workspace = true
 serde = { version = "1", features = ["derive"] }

@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-core"
 version = "0.1.0"
 edition = "2021"
 description = "Core adapter traits for converting external agent session models to SDKWork AgentSession"
 
+
+[lints]
+workspace = true
 [dependencies]
 sdkwork-agent-kernel.workspace = true
 sdkwork-utils-rust = { workspace = true }

@@ -1,9 +1,13 @@
 [package]
+rust-version.workspace = true
 name = "sdkwork-agent-provider-hermes"
 version = "0.2.0"
 edition = "2021"
 description = "Hermes agent provider integration for SDKWork Agent Kernel"
 
+
+[lints]
+workspace = true
 [lib]
 name = "sdkwork_agent_provider_hermes"
 path = "src/lib.rs"
