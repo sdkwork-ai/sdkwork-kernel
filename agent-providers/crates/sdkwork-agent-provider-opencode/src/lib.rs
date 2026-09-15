@@ -383,7 +383,7 @@ pub use sdk_integration::{opencode_binding_manifest, OpenCodeSdkIntegration};
 // Tests
 // ============================================================================
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
 

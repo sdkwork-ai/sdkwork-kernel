@@ -1132,7 +1132,7 @@ fn validate_selected_operation(
 /// Canonical router alias for provider transport dispatch.
 pub type ProviderTransportRouter = SdkRuntimeRouter;
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use sdkwork_agent_kernel::ModelRequest;

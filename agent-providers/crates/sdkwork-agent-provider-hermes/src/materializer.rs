@@ -381,7 +381,7 @@ pub(crate) fn read_hermes_model_configuration_at(
     Ok(status)
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
 

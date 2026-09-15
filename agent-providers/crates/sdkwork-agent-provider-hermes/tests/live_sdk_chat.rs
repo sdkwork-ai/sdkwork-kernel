@@ -1,3 +1,6 @@
+// WORKSPACE-PATH:allow-fixture - this file is a test fixture that simulates a foreign
+// checkout root, so the sdkwork-<name> segment below is the value under assertion rather
+// than a binding to a real sibling checkout. PORTABILITY_SPEC.md section 5.2 governs it.
 use sdkwork_agent_kernel::ModelProvider;
 use sdkwork_agent_provider_hermes::HermesSdkIntegration;
 

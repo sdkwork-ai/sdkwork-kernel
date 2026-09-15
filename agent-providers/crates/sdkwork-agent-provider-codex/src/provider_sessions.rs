@@ -1210,7 +1210,7 @@ fn raw_item_part(item: &ThreadItem) -> KernelResult<AgentPart> {
         .with_metadata("codex.content_type", "raw_provider_item"))
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use codex_app_server_protocol::ThreadItemsListResponse;

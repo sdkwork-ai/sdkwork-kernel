@@ -30,7 +30,7 @@ Specs: QUALITY_GATE_SPEC.md, ARCHITECTURE_DECISION_SPEC.md, SDKWORK_WORKSPACE_SP
 ## Definition Of Ready
 
 - Task source: user requested continued alignment to the sibling `../sdkwork-specs` standards.
-- Repository root: `E:\sdkwork-space\sdkwork-kernel`.
+- Repository root: `<workspace-root>/sdkwork-kernel`.
 - Application identity: no root `sdkwork.app.config.json`; this is a kernel standards repository,
   not an application root.
 - Relevant specs: `SOUL.md`, `SDKWORK_WORKSPACE_SPEC.md`, `COMPONENT_SPEC.md`, `SDK_SPEC.md`,

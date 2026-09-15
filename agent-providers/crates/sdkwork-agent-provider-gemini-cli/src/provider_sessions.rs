@@ -556,7 +556,7 @@ fn gemini_inventory_error(error: std::io::Error) -> KernelError {
     KernelError::provider_error("gemini_cli_provider_session_inventory", error.to_string())
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
 

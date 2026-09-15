@@ -402,7 +402,7 @@ pub use sdk_integration::{mimo_code_binding_manifest, MiMoCodeSdkIntegration};
 // ============================================================================`r`n// Tests
 // ============================================================================
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use sdkwork_agent_kernel::SessionState;

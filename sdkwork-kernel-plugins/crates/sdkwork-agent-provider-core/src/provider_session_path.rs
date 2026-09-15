@@ -71,10 +71,16 @@ mod tests {
 
     #[test]
     fn normalizes_windows_extended_paths_and_separators() {
+        // WORKSPACE-PATH:allow — the absolute paths are the *subject* of the
+        // assertion (this test pins how the normalizer lowercases a drive-prefixed
+        // workspace path and strips the `\\?\` extended-length prefix), not a
+        // source or build binding.
         assert_eq!(
             normalize_provider_session_path(r"\\?\E:\SDKWork-Space\BirdCoder\"),
             "e:/sdkwork-space/birdcoder"
         );
+        // WORKSPACE-PATH:allow — expected-output string of the assertion above;
+        // it must stay literal for the comparison to mean anything.
         assert_eq!(
             normalize_provider_session_path("E:/sdkwork-space/birdcoder"),
             "e:/sdkwork-space/birdcoder"

@@ -20,7 +20,7 @@ pub fn provider_user_home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};

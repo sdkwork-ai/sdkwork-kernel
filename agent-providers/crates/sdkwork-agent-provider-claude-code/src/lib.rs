@@ -470,7 +470,7 @@ pub use sdk_integration::{claude_code_binding_manifest, ClaudeCodeSdkIntegration
 // Tests
 // ============================================================================
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
 

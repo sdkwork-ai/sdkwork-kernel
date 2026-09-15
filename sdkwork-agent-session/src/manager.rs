@@ -1101,7 +1101,7 @@ fn session_rows_equivalent(left: &SessionRow, right: &SessionRow) -> bool {
             == normalized_json(right.metadata_json.as_deref())
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use sdkwork_agent_database::InMemoryDatabase;

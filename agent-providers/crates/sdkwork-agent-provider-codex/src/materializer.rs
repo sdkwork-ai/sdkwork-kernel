@@ -322,7 +322,7 @@ pub(crate) fn dematerialize_codex_model_configuration_at(
     dematerialize_provider_config_named(path, "codex")
 }
 
-#[cfg(test)]
+#[cfg(test)] // WORKSPACE-PATH:allow-fixture-block: this module is the file's #[cfg(test)] unit-test fixture data
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
