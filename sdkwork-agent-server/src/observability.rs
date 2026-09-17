@@ -33,9 +33,8 @@ pub fn init_tracing(config: &ServerConfig) -> anyhow::Result<()> {
 #[cfg(feature = "observability-otel")]
 fn init_with_otlp(env_filter: EnvFilter, endpoint: &str) -> anyhow::Result<()> {
     use opentelemetry::trace::TracerProvider as _;
-    use opentelemetry::KeyValue;
     use opentelemetry_otlp::WithExportConfig;
-    use opentelemetry_sdk::trace::TracerProvider;
+    use opentelemetry_sdk::trace::SdkTracerProvider;
     use opentelemetry_sdk::Resource;
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -43,11 +42,14 @@ fn init_with_otlp(env_filter: EnvFilter, endpoint: &str) -> anyhow::Result<()> {
         .with_endpoint(endpoint)
         .build()?;
 
-    let resource =
-        Resource::new_with_defaults([KeyValue::new("service.name", "sdkwork-agent-server")]);
+    // `Resource::builder()` carries the default detectors (OTEL_RESOURCE_ATTRIBUTES
+    // plus the telemetry SDK attributes); `with_service_name` pins service.name.
+    let resource = Resource::builder()
+        .with_service_name("sdkwork-agent-server")
+        .build();
 
-    let provider = TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .build();
 
