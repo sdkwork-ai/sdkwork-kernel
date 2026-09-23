@@ -12,7 +12,8 @@ Status: complete
 In-repo `sdkwork-kernel-ui/` was removed from `sdkwork-kernel`. Product UI shells live in
 application repositories and consume runtime HTTP through `@sdkwork/agent-internal-sdk` or
 `sdkwork-agent-client`. Verification commands in this document that reference
-`check-kernel-ui-architecture.mjs` or `sdkwork-kernel-ui/` are historical evidence only.
+`check-kernel-ui-architecture.mjs`, `ui-packages.mjs`, or `sdkwork-kernel-ui/` are historical evidence
+only.
 
 ## Scope
 
@@ -92,8 +93,9 @@ Follow-up validator extraction:
 - Required kernel specs, schemas, Rust crate files, kernel plugin structure, component identity, and
   code-kernel dependency checks now live in
   `tools/validators/kernel-standards/kernel-contracts.mjs`.
-- Kernel UI architecture command validation and UI package manifest/export checks now live in
-  `tools/validators/kernel-standards/ui-packages.mjs`.
+- Kernel UI architecture command validation and UI package manifest/export checks were retired with the
+  `sdkwork-kernel-ui` workspace. `ui-packages.mjs` and its wiring in `check-kernel-standards.mjs` are
+  historical evidence only.
 - The tool README lives at `tools/validators/kernel-standards/README.md` and documents the canonical
   command `node scripts/check-kernel-standards.mjs`.
 - `scripts/check-agent-sdk-workspace.mjs` is now a thin command entrypoint.
