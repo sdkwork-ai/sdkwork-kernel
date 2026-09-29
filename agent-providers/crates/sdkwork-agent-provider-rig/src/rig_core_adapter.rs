@@ -76,7 +76,11 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
     fn invoke_model(&self, request: ModelRequest) -> KernelResult<ModelResponse> {
         let secret_ref = SecretRef::new(&self.api_key_secret_ref, "Rig OpenAI API key");
         let secret = self.host.resolve_secret(secret_ref)?;
-        let mut builder = openai::Client::builder().api_key(secret.expose_value());
+        // `CompletionsClient` is the chat-completions client. Since rig-core
+        // 0.42 the default `openai::Client` targets the `/v1/responses`
+        // endpoint instead, which OpenAI-compatible vendors behind a custom
+        // `llm.rig.base_url` (deepseek, qwen, …) do not serve.
+        let mut builder = openai::CompletionsClient::builder().api_key(secret.expose_value());
         if let Some(base_url) = self.base_url.as_deref().filter(|value| !value.trim().is_empty())
         {
             builder = builder.base_url(base_url);
