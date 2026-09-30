@@ -95,10 +95,8 @@ impl AgentDatabase for SqliteDatabase {
             .map_err(|e| DatabaseError::Internal(format!("failed to acquire lock: {}", e)))?;
 
         let param_values: Vec<String> = params.iter().map(|p| p.as_sql_value()).collect();
-        let rusqlite_params: Vec<&dyn rusqlite::types::ToSql> = param_values
-            .iter()
-            .map(|s| s as &dyn rusqlite::types::ToSql)
-            .collect();
+        let rusqlite_params: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|s| s as _).collect();
 
         conn.execute(sql, rusqlite_params.as_slice())
             .map_err(|e| DatabaseError::Query(format!("failed to execute: {}", e)))
@@ -115,10 +113,8 @@ impl AgentDatabase for SqliteDatabase {
             .map_err(|e| DatabaseError::Internal(format!("failed to acquire lock: {}", e)))?;
 
         let param_values: Vec<String> = params.iter().map(|p| p.as_sql_value()).collect();
-        let rusqlite_params: Vec<&dyn rusqlite::types::ToSql> = param_values
-            .iter()
-            .map(|s| s as &dyn rusqlite::types::ToSql)
-            .collect();
+        let rusqlite_params: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|s| s as _).collect();
 
         let mut stmt = conn
             .prepare(sql)
@@ -142,7 +138,7 @@ impl AgentDatabase for SqliteDatabase {
                     .map_err(|e| DatabaseError::Query(format!("failed to get value: {}", e)))?;
                 values.insert(col_name.clone(), value);
             }
-            result.push(Box::new(SqliteRow { values }) as Box<dyn DatabaseRow>);
+            result.push(Box::new(SqliteRow { values }) as _);
         }
 
         Ok(result)

@@ -1359,7 +1359,7 @@ impl RuntimeBuilder {
             ],
         );
         self.providers.push(provider_manifest);
-        let provider = Arc::new(provider) as Arc<dyn HostProvider + Send + Sync>;
+        let provider: Arc<dyn HostProvider + Send + Sync> = Arc::new(provider);
         self.provider_registry
             .add_host_provider(provider_id, self.wrap_host_provider(provider));
         self

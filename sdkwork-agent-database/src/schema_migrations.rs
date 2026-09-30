@@ -6,6 +6,7 @@
 //! client-local store keeps its own versioned migration path.
 
 use crate::error::{DatabaseError, DatabaseResult};
+#[cfg(feature = "postgres-sync")]
 use crate::types::CURRENT_SCHEMA_VERSION;
 use sdkwork_utils_rust::crypto::sha256_hash;
 

@@ -12,7 +12,7 @@
   },
   "scripts": {
     "stop": "pnpm exec sdkwork-app stop",
-    "dev": "pnpm dev:standalone",
+    "dev": "node scripts/sdkwork-command.mjs dev",
     "dev:server:postgres:standalone": "pnpm exec sdkwork-app dev --runtime-target server --deployment-profile standalone",
     "build": "pnpm exec sdkwork-app build",
     "test": "pnpm exec sdkwork-app test",

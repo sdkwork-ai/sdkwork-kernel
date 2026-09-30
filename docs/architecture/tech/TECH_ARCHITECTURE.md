@@ -228,7 +228,7 @@ TypeScript SDK is regenerated via `node sdks/workspace-agent-sdkgen.mjs --mode a
 | `runtime.sessions.retrieve/delete` | GET/DELETE | `/sessions/{sessionId}` | `get_session` / delete |
 | `runtime.sessions.close` | POST | `/sessions/{sessionId}/close` | `close_session` |
 | `runtime.sessions.messages.send/list` | POST/GET | `/sessions/{sessionId}/messages` | `send_message` returns a completed `MessageTurnResponse`; list uses cursor-only keyset paging |
-| `runtime.sessions.tasks.submit/list` | POST/GET | `/sessions/{sessionId}/tasks` | `create_task` / `list_tasks` |
+| `runtime.sessions.tasks.submit/list` | POST/GET | `/sessions/{sessionId}/tasks` | `create_task` (POST) / `list_tasks` (GET) on the same path |
 | `runtime.tasks.retrieve` | GET | `/tasks/{taskId}` | `get_task` |
 | `runtime.tasks.cancel` | POST | `/tasks/{taskId}/cancel` | `cancel_task` |
 | `runtime.models.list` | GET | `/models` | model catalog |
@@ -322,9 +322,20 @@ classification of each operation.
 ### Fail-closed production posture
 
 - `sdkwork-agent-provider-core::mock_policy` gates mock model/tool responses.
-- `SDKWORK_KERNEL_ALLOW_MOCK_PROVIDERS=1` is development-only.
+- `SDKWORK_KERNEL_ALLOW_MOCK_PROVIDERS=1` is development-only, and the kernel
+  gate itself (`mock_provider_invocation_allowed`) rejects it unconditionally
+  in production profiles, so embedded runtimes without a server preflight in
+  front cannot be flipped into mock responses by environment variable.
+- Model and tool catalogs are fail-closed: a missing or empty production
+  provider reports no models instead of surfacing the phantom mock catalog,
+  and the mock fallback is reachable only through explicit test construction.
+- Permission-hook approvals substitute for the interactive human approval
+  only; the policy provider still evaluates every hook-approved tool call
+  (fail-closed), and an explicit policy Deny wins over a hook Approve.
 - Transport `prepare()` health determines router attachment.
 - SDK workers reject fail-open invoke paths when spawn or negotiation fails.
+- Backend selection treats an unknown driver health probe (registered but
+  never probed) as unhealthy rather than healthy.
 - **Rate limiter**: Multi-replica production uses Redis-backed enforcement and
   denies requests when Redis fails. Bounded in-process buckets are limited to
   non-distributed profiles; they are not a production cluster fallback.
@@ -353,7 +364,12 @@ classification of each operation.
   `application/problem+json` bodies with `type`, `title`, `status`, numeric
   `code`, and `traceId` for machine-readable error handling.
 - **PostgreSQL authority guard**: server configuration rejects SQLite before
-  startup. SQLite is limited to declared client-local stores and test fixtures.
+  startup. SQLite is limited to declared client-local stores and test fixtures
+  (the server exposes a `sqlite` feature for those fixture paths only).
+- **Cancel model parity**: the default rig provider registers its in-flight
+  model calls so `/sessions/{sessionId}/model/cancel` aborts the spawned
+  provider task and the blocked invoke returns a cancelled response, instead
+  of acknowledging cancellation while the call continued to completion.
 
 ### Ingress and client auth
 
@@ -465,7 +481,12 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
   cannot retain completed session locks; creation, upgrade, and cleanup remain
   serialized by the registry mutex. Bridge event snapshots are bounded per session and
   globally, so high-churn short sessions do not leave unbounded transient
-  runtime entries behind.
+  runtime entries behind. Transient bridge state is also a re-hydratable
+  cache: sessions and per-session event snapshots idle beyond
+  `BRIDGE_IDLE_EVICTION` (one hour) are lazily evicted at the next session
+  registration and rebuilt from persistence on the next access, so abandoned
+  sessions that never call close cannot exhaust the bounded session capacity
+  into hard registration failures.
 - **Tool execution boundary**: Tool discovery returns only descriptors from a
   registered provider in production/default construction. Synthetic built-ins
   exist only behind the test-only mock constructor. Invocation delegates to
@@ -492,11 +513,18 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
   permits, current waiters, rejection reasons, and permit-acquisition
   latency. Lifecycle guards keep wait and active gauges correct across
   cancellation, errors, and provider panic. Managed Node and Python stdio
-  workers enforce the request `timeoutMs` as a hard process deadline for unary
-  and streaming calls;
+  workers enforce the request `timeoutMs` as a hard process deadline for unary,
+  session-control, and streaming calls;
   health probes use a two-second deadline. Expiry terminates and waits for the
   request-scoped child, and the failed worker is never returned to the bounded
-  pool. Provider-specific cancellation-latency, long-running soak, and resource
+  pool. Workers run in their own Unix process group, so cancellation kills the
+  worker's provider grandchildren as well as the direct child; worker stderr
+  is piped into a bounded 64 KiB tail (drained concurrently so a chatty child
+  can neither deadlock nor grow memory) and is attached to fail-closed spawn
+  and termination errors for production diagnosability. An unconfirmed Codex
+  cooperative interrupt falls back to terminating the leased worker instead of
+  letting the stream run to the watchdog deadline. Provider-specific
+  cancellation-latency, long-running soak, and resource
   ceiling evidence remain release-environment gates.
 - **Permission execution resume**: v5 SQLite and PostgreSQL persistence creates
   the permission, internal task/run/tool step, encrypted operation, and event in
@@ -511,8 +539,15 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
 - **Task cancellation transition**: Task cancellation uses a repository-owned
   transaction that checks the current state and writes the `task.cancelled`
   event together with the state change. Repeated cancellation returns the
-  already-cancelled row without another event; completed/failed tasks reject
-  cancellation. This is state consistency, not yet a durable task executor.
+  already-cancelled row without another event; completed and failed tasks
+  reject cancellation on both cancellation paths (`cancel_task_with_event` and
+  `request_task_cancellation`). Cancelling a task also fences out permission
+  workers holding a live claim: linked `permission_operations` rows in
+  `pending`/`claimable`/`executing` are cancelled, their leases dropped, their
+  fencing tokens bumped, and their payloads crypto-erased, so a stale claim
+  can never resurrect a cancelled task. Permission completion and failure
+  transitions guard the `tasks.state` update against terminal states for the
+  same reason. This is state consistency, not yet a durable task executor.
 - **PersistenceState**: Uses `Arc<UnifiedSessionManager>` instead of
   `Arc<Mutex<...>>` — the session manager methods take `&self`, and
   underlying repositories handle their own concurrency (SQLite internal
@@ -541,15 +576,21 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
   not-found instead of silently inserting it.
 - **Rate limiter**: O(1) LRU eviction via insertion-order queue instead of
   O(n) scan.
-- **Idempotency**: Production/non-loopback mutations use a distributed store
-  scoped by verified identity, route, query, key, and server-computed request
-  fingerprint. Bounded JSON success and 5xx responses are replayed exactly;
+- **Idempotency**: Every production profile (standalone and cloud) requires a
+  distributed store scoped by verified identity, route, query, key, and
+  server-computed request fingerprint; startup fails closed when
+  `SDKWORK_IDEMPOTENCY_REDIS_URL` is missing in production, because the
+  bounded-entry memory store has no total-byte budget. Bounded JSON success
+  and 5xx responses are replayed exactly;
   4xx reservations are released, while uncacheable or uncertain outcomes stay
   fail-closed to prevent duplicate side effects. Model-output-bearing routes
   (message turns and model invokes) cache responses up to 4 MiB — above the
   3 MiB model output ceiling plus envelope — so a committed mutation with a
   large assistant message stays replayable instead of returning `413` with a
-  stuck reservation; all other routes keep the configured generic limit.
+  stuck reservation; all other routes keep the configured generic limit. The
+  fallback in-process store (development only) bounds cached responses by
+  total bytes (256 MiB, oldest-inserted eviction) in addition to the entry
+  cap.
 - **SSE events**: The handler subscribes before persistence replay, uses the
   process-local broadcast path for low latency, and polls the durable store in
   bounded batches to recover cross-pod and lagged events. Each connection has
@@ -598,8 +639,31 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
 - **Extractor rejections**: axum 0.8 default `text/plain` 400 rejections
   (unknown query parameters such as `pageSize`/`limit`, malformed JSON bodies,
   bad path values) are normalized to `application/problem+json` `40003`
-  responses by an outer middleware, so every error path carries `code` and
+  responses by an outer middleware, and bare `tower-http` timeout `408`s are
+  normalized to `application/problem+json` with the mapped timeout code, so
+  every error path carries `code` and
   `traceId` per `PAGINATION_SPEC.md` §10.1.
+- **Async runtime hygiene**: Handlers never block the Tokio runtime on
+  per-session turn locks or provider I/O — session release and provider
+  cancellation run through `spawn_blocking` / provider admission, like every
+  other provider-touching path. Environment parsing fails closed: invalid
+  `SDKWORK_RATE_LIMIT_RPS`, `SDKWORK_RATE_LIMIT_BURST`, and
+  `SDKWORK_CORS_ENABLED` values reject startup instead of silently disabling
+  limiting or enabling CORS.
+- **Int64 wire contract (API_SPEC §13.6)**: every OpenAPI `format: int64`
+  field is `type: string` with a decimal `pattern` and
+  `x-sdkwork-int64-string: true`; Rust DTOs serialize int64 wire fields
+  through `sdkwork_utils_rust::serde_int64`, and the generated TypeScript SDK
+  types them as `string`. `scripts/check-int64-wire-contract.mjs` enforces the
+  rule on the authority OpenAPI and both derived SDK snapshots (run as part of
+  the verification matrix).
+- **PostgreSQL schema authority**: `apply_postgres_pool` creates the
+  idempotent `agent_runtime_schema_migration_history` table and records the
+  authoritative baseline as exactly one row at `CURRENT_SCHEMA_VERSION`, so
+  `schema_status` (and therefore `/readyz`) works on every fresh or existing
+  PostgreSQL deployment; structural drift is validated separately by
+  `validate_postgres_schema`. The live PostgreSQL contract suite runs in CI
+  (`--include-ignored` against a service-container Postgres).
 - **Durable task retries**: Transient task failures (provider unavailability,
   admission saturation, persistence hiccups, retryable model errors) are
   rescheduled with exponential backoff (`SDKWORK_TASK_WORKER_RETRY_BACKOFF_*`,
@@ -653,6 +717,7 @@ cargo test --workspace
 cargo build --workspace
 node scripts/check-agent-provider-bindings.mjs
 node scripts/check-kernel-standards.mjs
+node scripts/check-int64-wire-contract.mjs
 node --test sdkwork-kernel-plugins/tests/kernel_plugin_structure.test.mjs
 node ../../../sdkwork-specs/tools/check-repository-docs-standard.mjs --root .
 ```

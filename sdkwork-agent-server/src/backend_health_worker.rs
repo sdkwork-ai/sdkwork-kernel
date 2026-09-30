@@ -9,6 +9,11 @@ use sdkwork_agent_kernel::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::JoinHandle;
+use std::time::Duration;
+
+/// Cooldown applied when a monitor tick bails out early or panics, so a
+/// poisoned lock cannot turn the worker thread into a hot spin.
+const BAILOUT_BACKOFF: Duration = Duration::from_secs(1);
 
 /// Owns a [`BackendHealthMonitor`] and a background thread that refreshes driver health.
 #[derive(Clone)]
@@ -38,7 +43,8 @@ impl BackendHealthWorker {
             // The whole monitor loop is wrapped in catch_unwind so a panic in
             // one tick (a poisoned lock, a panicking provider health probe)
             // does not silently kill the worker; it logs and continues with
-            // the next wakeup instead.
+            // the next wakeup instead. When a tick bails out early (poisoned
+            // wake lock), the backoff sleep keeps the outer loop from spinning.
             while !stop_for_thread.load(Ordering::Relaxed) {
                 let tick_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     health_check_loop(
@@ -47,10 +53,20 @@ impl BackendHealthWorker {
                         &monitor_for_thread,
                         &agent_runtime,
                         interval,
-                    );
+                    )
                 }));
-                if tick_result.is_err() {
-                    tracing::warn!("backend health worker panicked; continuing on the next check");
+                match tick_result {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            "backend health worker tick bailed out early; backing off"
+                        );
+                        std::thread::sleep(BAILOUT_BACKOFF);
+                    }
+                    Err(_) => {
+                        tracing::warn!("backend health worker panicked; continuing on the next check");
+                        std::thread::sleep(BAILOUT_BACKOFF);
+                    }
                 }
             }
         });
@@ -97,34 +113,36 @@ impl std::fmt::Debug for BackendHealthWorker {
 }
 
 /// One pass of the backend health monitor: wait for the next wakeup (or the
-/// check interval) and refresh every registered driver's health. Returns when
-/// the worker is stopped.
+/// check interval) and refresh every registered driver's health. Returns
+/// `true` when the tick waited on the wake condition normally, `false` when
+/// it bailed out early (poisoned wake lock) so the caller can back off
+/// instead of spinning.
 fn health_check_loop(
     stop_for_thread: &AtomicBool,
     wake_for_thread: &Arc<(Mutex<()>, Condvar)>,
     monitor_for_thread: &Arc<RwLock<BackendHealthMonitor>>,
     agent_runtime: &Arc<AgentRuntime>,
     interval: std::time::Duration,
-) {
+) -> bool {
     let (wake_lock, wake_signal) = &**wake_for_thread;
     let Ok(wake_guard) = wake_lock.lock() else {
-        return;
+        return false;
     };
     let Ok((wake_guard, _timeout)) = wake_signal.wait_timeout_while(wake_guard, interval, |_| {
         !stop_for_thread.load(Ordering::Relaxed)
     }) else {
-        return;
+        return false;
     };
     drop(wake_guard);
     if stop_for_thread.load(Ordering::Relaxed) {
-        return;
+        return true;
     }
 
     let Ok(mut guard) = monitor_for_thread.write() else {
-        return;
+        return false;
     };
     if !guard.should_check() {
-        return;
+        return true;
     }
     guard.mark_check();
     let diagnostics = agent_runtime.diagnostics();
@@ -135,6 +153,7 @@ fn health_check_loop(
         let driver_health = SdkDriverHealth::from_provider_health(health);
         let _ = guard.record_driver_health(&diagnostic.provider_id, driver_health);
     }
+    true
 }
 
 impl Drop for BackendHealthWorker {

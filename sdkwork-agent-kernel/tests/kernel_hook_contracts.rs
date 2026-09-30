@@ -468,7 +468,7 @@ fn chat_stream_events_honor_model_hooks() {
 }
 
 #[test]
-fn permission_hook_approve_skips_policy_flow() {
+fn permission_hook_approve_still_passes_policy_flow() {
     let hook = Arc::new(RecordingHook::with_mode(HookMode::ApprovePermission));
     let runtime = hook_runtime(hook);
 
@@ -485,8 +485,10 @@ fn permission_hook_approve_skips_policy_flow() {
         tool_execution.result.normalized_status,
         ToolCallStatus::Succeeded
     );
-    // The policy decision records the hook approval.
-    assert_eq!(
+    // The hook approval substitutes for interactive human approval only:
+    // the policy provider still evaluated the call (fail-closed), so the
+    // recorded decision names the policy provider, not the hook.
+    assert_ne!(
         tool_execution.policy_decision.policy_provider_id,
         "kernel.hook"
     );

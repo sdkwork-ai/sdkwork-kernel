@@ -24,7 +24,15 @@ impl SpawnedWorker {
         // direct child. Windows lacks a std process-group equivalent; kill()
         // terminates the direct child and descendants exit on stdin EOF.
         #[cfg(unix)]
-        command.process_group(0);
+        {
+            command.process_group(0);
+        }
+        #[cfg(not(unix))]
+        {
+            // Keep the `mut` binding meaningful on Windows where the
+            // process-group setup above is compiled out.
+            let _ = &mut command;
+        }
         let (session, child, stderr_tail) = StdioJsonRpcSession::spawn(command)?;
         Ok(Self {
             session: Arc::new(session),
