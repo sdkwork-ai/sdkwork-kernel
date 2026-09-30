@@ -192,7 +192,12 @@ pub fn validate(config: &ServerConfig) -> PreflightResult {
         });
     }
 
-    if config.is_production_kernel_profile() && config.allow_mock_provider_fallback() {
+    // The kernel gate already refuses mocks in production unconditionally;
+    // this preflight check fails fast with an explicit message whenever the
+    // override environment variable is set at all in a production profile.
+    if config.is_production_kernel_profile()
+        && sdkwork_agent_kernel::mock_provider_override_enabled_from_env()
+    {
         checks.push(PreflightCheck {
             name: "mock_providers".to_string(),
             status: PreflightStatus::Failed,

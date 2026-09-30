@@ -834,7 +834,9 @@ mod tests {
     }
 
     #[test]
-    fn production_topology_profile_allows_explicit_mock_override() {
+    fn production_topology_profile_rejects_mock_override() {
+        // The kernel gate is unconditionally fail-closed in production: the
+        // override environment variable is development-only.
         let _lock = crate::testing::env::lock();
         let _profile = crate::testing::env::VarGuard::set(
             "SDKWORK_KERNEL_PROFILE_ID",
@@ -846,6 +848,6 @@ mod tests {
             environment: "production".to_string(),
             ..Default::default()
         };
-        assert!(config.allow_mock_provider_fallback());
+        assert!(!config.allow_mock_provider_fallback());
     }
 }
