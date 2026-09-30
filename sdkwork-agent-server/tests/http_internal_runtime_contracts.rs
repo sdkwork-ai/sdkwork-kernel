@@ -708,7 +708,7 @@ async fn internal_runtime_tasks_support_cursor_pagination() {
         let submit = Request::builder()
             .method("POST")
             .uri(runtime_path(&format!(
-                "/sessions/{session_id}/tasks/submit"
+                "/sessions/{session_id}/tasks"
             )))
             .header(CONTENT_TYPE, "application/json")
             .body(Body::from(
@@ -1084,7 +1084,7 @@ async fn token_policy_blocks_foreign_task_access() {
         Request::builder()
             .method("POST")
             .uri(runtime_path(&format!(
-                "/sessions/{session_id}/tasks/submit"
+                "/sessions/{session_id}/tasks"
             )))
             .header(CONTENT_TYPE, "application/json"),
         TEST_INGRESS_TOKEN,
@@ -1139,7 +1139,28 @@ async fn token_policy_blocks_foreign_task_access() {
         .expect("get owner run request should succeed");
     assert_eq!(owner_run.status(), StatusCode::OK);
     let run_payload = read_json(owner_run).await;
-    let task_id = item_value(&run_payload)["taskId"]
+    let run_item = item_value(&run_payload);
+    // Int64 wire contract (API_SPEC §13.6): int64 fields cross the JSON
+    // boundary as decimal strings so JS clients never lose precision.
+    assert!(
+        run_item["attempt"].is_string(),
+        "attempt must serialize as an int64 string, got: {}",
+        run_item["attempt"]
+    );
+    assert!(
+        run_item["fencingToken"].is_string(),
+        "fencingToken must serialize as an int64 string, got: {}",
+        run_item["fencingToken"]
+    );
+    assert!(run_item["steps"].is_array());
+    for step in run_item["steps"].as_array().expect("steps array") {
+        assert!(
+            step["sequenceNo"].is_string(),
+            "step sequenceNo must serialize as an int64 string, got: {}",
+            step["sequenceNo"]
+        );
+    }
+    let task_id = run_item["taskId"]
         .as_str()
         .expect("taskId should be present");
 

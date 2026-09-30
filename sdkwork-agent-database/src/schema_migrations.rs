@@ -6,6 +6,7 @@
 //! client-local store keeps its own versioned migration path.
 
 use crate::error::{DatabaseError, DatabaseResult};
+use crate::types::CURRENT_SCHEMA_VERSION;
 use sdkwork_utils_rust::crypto::sha256_hash;
 
 #[cfg(feature = "sqlite")]
@@ -583,6 +584,23 @@ pub(crate) fn validate_sqlite_schema(conn: &rusqlite::Connection) -> DatabaseRes
 }
 
 #[cfg(feature = "postgres-sync")]
+const POSTGRES_HISTORY_TABLE_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_runtime_schema_migration_history (
+    version BIGINT PRIMARY KEY,
+    name TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"#;
+
+/// The PostgreSQL store has no versioned migrations: the authoritative DDL is
+/// one idempotent baseline recorded as a single history row at
+/// `CURRENT_SCHEMA_VERSION`. `schema_status` treats that one row — not a row
+/// per migration version — as the applied-state invariant for this backend.
+#[cfg(feature = "postgres-sync")]
+const POSTGRES_BASELINE_MIGRATION_NAME: &str = "postgres_runtime_baseline";
+
+#[cfg(feature = "postgres-sync")]
 pub async fn apply_postgres_pool(pool: &sqlx::PgPool) -> DatabaseResult<()> {
     let mut tx = pool.begin().await.map_err(postgres_migration_error)?;
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
@@ -593,13 +611,37 @@ pub async fn apply_postgres_pool(pool: &sqlx::PgPool) -> DatabaseResult<()> {
 
     // Initialization state: the full authoritative DDL is one idempotent
     // baseline; no versioned migrations exist for PostgreSQL.
+    sqlx::raw_sql(POSTGRES_HISTORY_TABLE_SQL)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| postgres_migration_error(error))?;
     sqlx::raw_sql(POSTGRES_MIGRATION_SQL)
         .execute(&mut *tx)
         .await
         .map_err(postgres_migration_error)?;
+    record_postgres_baseline(&mut tx).await?;
 
     validate_postgres_schema(&mut tx).await?;
     tx.commit().await.map_err(postgres_migration_error)
+}
+
+#[cfg(feature = "postgres-sync")]
+async fn record_postgres_baseline(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> DatabaseResult<()> {
+    let checksum = migration_checksum(POSTGRES_MIGRATION_SQL);
+    sqlx::query(
+        "INSERT INTO agent_runtime_schema_migration_history (version, name, checksum) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (version) DO NOTHING",
+    )
+    .bind(CURRENT_SCHEMA_VERSION)
+    .bind(POSTGRES_BASELINE_MIGRATION_NAME)
+    .bind(checksum)
+    .execute(&mut **tx)
+    .await
+    .map_err(postgres_migration_error)?;
+    Ok(())
 }
 
 #[cfg(feature = "postgres-sync")]

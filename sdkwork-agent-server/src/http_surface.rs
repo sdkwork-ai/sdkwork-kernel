@@ -42,9 +42,6 @@ fn internal_runtime_route_template(path: &str) -> &'static str {
         p if p.starts_with("/sessions/") && p.ends_with("/tasks") => {
             "/internal/v3/api/intelligence/runtime/sessions/{session_id}/tasks"
         }
-        p if p.starts_with("/sessions/") && p.ends_with("/tasks/submit") => {
-            "/internal/v3/api/intelligence/runtime/sessions/{session_id}/tasks/submit"
-        }
         p if p.starts_with("/sessions/") && p.ends_with("/model/invoke") => {
             "/internal/v3/api/intelligence/runtime/sessions/{session_id}/model/invoke"
         }

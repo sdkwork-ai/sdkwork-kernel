@@ -1431,6 +1431,22 @@ fn live_postgres_permission_operation_claim_is_skip_locked_and_fenced_when_uri_c
     let _ = db.delete_session_cascade(&session_id);
 }
 
+#[test]
+#[ignore = "requires SDKWORK_DATABASE_URL and a disposable live PostgreSQL database"]
+fn live_postgres_schema_status_reports_baseline_when_uri_configured() {
+    use sdkwork_agent_database::RuntimeMaintenance;
+
+    let uri = runtime_postgres_uri();
+    let db = PostgresDatabase::connect_migrated(&uri).expect("postgres");
+    let status = db.schema_status().expect("schema status");
+    assert!(
+        status.drift_free,
+        "PostgreSQL readiness depends on schema_status: version={} expected={} drift_free=false",
+        status.version, status.expected_version
+    );
+    assert_eq!(status.version, status.expected_version);
+}
+
 fn uuid_like_suffix() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()

@@ -439,12 +439,16 @@ impl RuntimeMaintenance for PostgresDatabase {
                 .await
                 .is_ok();
             tx.rollback().await.map_err(map_sqlx_error)?;
+            // The PostgreSQL store records the authoritative idempotent
+            // baseline as exactly one history row at CURRENT_SCHEMA_VERSION
+            // (see apply_postgres_pool); SQLite instead records one row per
+            // versioned migration. Structural drift is validated separately.
             Ok(RuntimeSchemaStatus {
                 version,
                 expected_version: CURRENT_SCHEMA_VERSION,
                 drift_free: structural
                     && version == CURRENT_SCHEMA_VERSION
-                    && count == CURRENT_SCHEMA_VERSION,
+                    && count == 1,
             })
         })
     }

@@ -66,11 +66,7 @@ pub fn build_internal_runtime_routes(
         )
         .route(
             "/sessions/{session_id}/tasks",
-            get(internal_runtime::list_tasks),
-        )
-        .route(
-            "/sessions/{session_id}/tasks/submit",
-            post(internal_runtime::submit_task),
+            post(internal_runtime::submit_task).get(internal_runtime::list_tasks),
         )
         .route("/tasks/{task_id}", get(internal_runtime::get_task))
         .route("/runs/{run_id}", get(internal_runtime::get_run))

@@ -27,6 +27,11 @@ observability-otel = [
 # need the Codex engine enable it explicitly, and client-local surfaces
 # enable it for device-scoped state.
 codex-provider = ["dep:sdkwork-agent-provider-codex"]
+# SQLite backing for the server's in-memory/SQLite persistence paths. This
+# exists for test fixtures (HTTP contract suites) and declared client-local
+# stores only; authoritative server persistence stays PostgreSQL-only
+# (DATABASE_SPEC), and production preflight rejects SQLite engines.
+sqlite = ["sdkwork-agent-database/sqlite"]
 
 [dependencies]
 sdkwork-agent-kernel.workspace = true

@@ -69,6 +69,7 @@ const commands = [
   ['node', ['--test', 'tests/kernel_deployment_release.test.mjs']],
   ['node', ['--test', 'scripts/dev/sdkwork-kernel-topology-baggage.test.mjs']],
   ['node', ['--test', 'sdkwork-kernel-plugins/tests/kernel_plugin_structure.test.mjs']],
+  ['node', ['scripts/check-int64-wire-contract.mjs']],
   ['cargo', ['test', '--manifest-path', 'sdkwork-agent-kernel/Cargo.toml', '-q']],
   ['cargo', ['test', '--manifest-path', 'sdkwork-agent-server/Cargo.toml', '-q']],
   [
@@ -87,8 +88,23 @@ const commands = [
     'cargo',
     [
       'test',
+      '--features',
+      'sqlite',
       '--test',
       'http_internal_runtime_contracts',
+      '--manifest-path',
+      'sdkwork-agent-server/Cargo.toml',
+      '-q'
+    ]
+  ],
+  [
+    'cargo',
+    [
+      'test',
+      '--features',
+      'sqlite',
+      '--test',
+      'http_idempotency_contracts',
       '--manifest-path',
       'sdkwork-agent-server/Cargo.toml',
       '-q'

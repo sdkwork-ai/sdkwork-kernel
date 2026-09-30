@@ -1482,8 +1482,10 @@ components:
         workingDirectory:
           type: string
         timeoutMs:
-          type: integer
+          type: string
           format: int64
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
           nullable: true
         policyCategories:
           type: array
@@ -1496,8 +1498,10 @@ components:
         commandId:
           type: string
         sequence:
-          type: integer
+          type: string
           format: int64
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
         channel:
           type: string
           enum: [stdout, stderr, system]
@@ -1845,9 +1849,10 @@ components:
         stepId:
           type: string
         sequenceNo:
-          type: integer
+          type: string
           format: int64
-          minimum: 0
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
         actionKind:
           type: string
           enum: [model_call, tool_call, memory_read, memory_write, host_operation, protocol_send, handoff, wait_for_user, internal]
@@ -1883,16 +1888,18 @@ components:
         sessionId:
           type: string
         attempt:
-          type: integer
+          type: string
           format: int64
-          minimum: 1
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
         state:
           type: string
           enum: [created, planning, executing, awaiting_permission, paused, completed, failed, cancelled]
         fencingToken:
-          type: integer
+          type: string
           format: int64
-          minimum: 0
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
         cancelRequestedAt:
           type: string
           nullable: true
@@ -2263,8 +2270,10 @@ components:
           items:
             type: string
         timeoutMs:
-          type: integer
+          type: string
           format: int64
+          pattern: '^-?[0-9]+$'
+          x-sdkwork-int64-string: true
           nullable: true
     ExecuteToolItemResponse:
       description: Tool execution SdkWorkApiResponse envelope.

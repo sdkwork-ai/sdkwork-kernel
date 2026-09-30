@@ -148,7 +148,7 @@ pub fn route_requires_idempotency(method: &Method, path: &str) -> bool {
         p if p.starts_with("/permissions/") => true,
         p if p.starts_with("/sessions/") && p.ends_with("/close") => true,
         p if p.starts_with("/sessions/") && p.ends_with("/messages") => true,
-        p if p.starts_with("/sessions/") && p.ends_with("/tasks/submit") => true,
+        p if p.starts_with("/sessions/") && p.ends_with("/tasks") => true,
         p if p.starts_with("/sessions/") && p.ends_with("/model/invoke") => true,
         p if p.starts_with("/sessions/") && p.ends_with("/model/cancel") => true,
         p if p.starts_with("/sessions/") && p.contains("/tools/") && p.ends_with("/execute") => {
@@ -575,7 +575,7 @@ mod tests {
         );
         assert_eq!(
             state.max_cached_response_bytes_for(
-                "/internal/v3/api/intelligence/runtime/sessions/sess/tasks/submit"
+                "/internal/v3/api/intelligence/runtime/sessions/sess/tasks"
             ),
             state.max_cached_response_bytes,
             "non-model routes keep the configured generic limit"

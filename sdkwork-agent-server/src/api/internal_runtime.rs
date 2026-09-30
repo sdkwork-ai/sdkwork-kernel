@@ -152,8 +152,12 @@ pub struct TerminalCommandJson {
     pub command: String,
     pub args: Vec<String>,
     pub working_directory: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_ms: Option<u64>,
+    #[serde(
+        default,
+        with = "sdkwork_utils_rust::serde_int64::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub timeout_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_categories: Vec<String>,
 }
@@ -162,7 +166,8 @@ pub struct TerminalCommandJson {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalOutputChunkJson {
     pub command_id: String,
-    pub sequence: u64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    pub sequence: i64,
     pub channel: String,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -458,8 +463,10 @@ pub struct RunViewJson {
     pub run_id: String,
     pub task_id: String,
     pub session_id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     pub attempt: i64,
     pub state: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     pub fencing_token: i64,
     pub cancel_requested_at: Option<String>,
     pub started_at: Option<String>,
@@ -476,6 +483,7 @@ pub struct RunViewJson {
 #[serde(rename_all = "camelCase")]
 pub struct StepViewJson {
     pub step_id: String,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
     pub sequence_no: i64,
     pub action_kind: String,
     pub state: String,
@@ -509,8 +517,11 @@ pub struct ToolDescriptorJson {
     pub description: Option<String>,
     pub side_effect_level: String,
     pub policy_categories: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_ms: Option<u64>,
+    #[serde(
+        with = "sdkwork_utils_rust::serde_int64::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub timeout_ms: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -566,7 +577,8 @@ pub struct CancelModelRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ModelStreamChunkJson {
     pub model_request_id: String,
-    pub sequence: u64,
+    #[serde(with = "sdkwork_utils_rust::serde_int64")]
+    pub sequence: i64,
     pub content: String,
     pub finish_reason: Option<String>,
 }
@@ -1416,7 +1428,7 @@ impl sdkwork_agent_kernel::ModelStreamSink for MpscModelStreamSink {
 fn model_chunk_to_event(chunk: &sdkwork_agent_kernel::ModelStreamChunk) -> Event {
     let json = ModelStreamChunkJson {
         model_request_id: chunk.model_request_id.clone(),
-        sequence: chunk.sequence,
+        sequence: i64::try_from(chunk.sequence).unwrap_or(i64::MAX),
         content: chunk.content.clone(),
         finish_reason: None,
     };
@@ -2911,7 +2923,9 @@ pub async fn list_tools(
             description: tool.description,
             side_effect_level: tool.side_effect_level.as_str().to_string(),
             policy_categories: tool.policy_categories,
-            timeout_ms: tool.timeout_ms,
+            timeout_ms: tool
+                .timeout_ms
+                .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
         })
         .collect();
     Ok(catalog_list_response(items, &trace_id))

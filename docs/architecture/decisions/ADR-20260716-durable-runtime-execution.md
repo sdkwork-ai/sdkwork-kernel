@@ -28,7 +28,7 @@ contract changes begin.
 ### API and SDK boundary
 
 - Replace the pre-release task mutation with an async command at
-  `POST /internal/v3/api/intelligence/runtime/sessions/{sessionId}/tasks/submit`.
+  `POST /internal/v3/api/intelligence/runtime/sessions/{sessionId}/tasks`.
 - Return HTTP `202` with `SdkWorkAsyncData`: `accepted: true`, the initial
   `runId` as `operationId`, `status: pending`, and a relative `pollUrl` for
   `GET /internal/v3/api/intelligence/runtime/runs/{runId}`.

@@ -222,12 +222,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Run live PostgreSQL runtime session contract
+      - name: Run live PostgreSQL runtime contracts
         env:
           SDKWORK_DATABASE_URL: postgres://sdkwork_ai_test:postgres@localhost:5432/sdkwork_ai_test
         run: >
           cargo test --features postgres-sync
           --test agent_runtime_postgres_contracts
           --manifest-path sdkwork-agent-database/Cargo.toml
-          live_postgres_session_message_roundtrip_when_uri_configured
-          -- --nocapture
+          -- --include-ignored --nocapture
+
+      - name: Run server HTTP contract suites (sqlite fixture feature)
+        run: >
+          cargo test --features sqlite
+          --manifest-path sdkwork-agent-server/Cargo.toml
+          -q
