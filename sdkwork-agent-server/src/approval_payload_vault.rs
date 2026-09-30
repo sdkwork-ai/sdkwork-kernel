@@ -4,6 +4,7 @@ use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, KeyInit, OsRng, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
 use serde::Serialize;
+use zeroize::Zeroize;
 
 const NONCE_BYTES: usize = 12;
 
@@ -42,13 +43,17 @@ impl ApprovalPayloadContext<'_> {
 
 impl ApprovalPayloadVault {
     pub fn from_encoded_key(encoded_key: &str) -> Result<Self, String> {
-        let key = sdkwork_utils_rust::base64url_decode(encoded_key)
+        let mut key = sdkwork_utils_rust::base64url_decode(encoded_key)
             .ok_or_else(|| "approval payload encryption key is not valid base64url".to_string())?;
         if key.len() != 32 {
+            // Zeroize malformed key material before dropping so it never
+            // lingers in freed heap memory.
+            key.zeroize();
             return Err("approval payload encryption key must decode to 32 bytes".to_string());
         }
-        let cipher = Aes256Gcm::new_from_slice(&key)
-            .map_err(|_| "approval payload encryption key is invalid".to_string())?;
+        let cipher = Aes256Gcm::new_from_slice(&key);
+        key.zeroize();
+        let cipher = cipher.map_err(|_| "approval payload encryption key is invalid".to_string())?;
         Ok(Self { cipher })
     }
 

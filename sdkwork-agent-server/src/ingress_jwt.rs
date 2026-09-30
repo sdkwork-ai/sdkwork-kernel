@@ -21,6 +21,9 @@ use crate::config::ServerConfig;
 const MAX_JWKS_BYTES: usize = 1_048_576;
 const JWKS_FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 const JWKS_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(60);
+/// Short cooldown after a failed refresh so one IdP hiccup cannot lock out
+/// unknown-kid validations for the full success interval.
+const JWKS_REFRESH_FAILURE_BACKOFF: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 enum JwksRefreshSource {
@@ -31,7 +34,7 @@ enum JwksRefreshSource {
 #[derive(Clone)]
 struct RefreshableJwksCache {
     keys: Arc<RwLock<HashMap<String, (Algorithm, DecodingKey)>>>,
-    last_refresh_attempt: Arc<RwLock<Option<Instant>>>,
+    last_refresh_attempt: Arc<RwLock<Option<(Instant, bool)>>>,
     source: JwksRefreshSource,
 }
 
@@ -57,12 +60,26 @@ impl RefreshableJwksCache {
             .last_refresh_attempt
             .write()
             .unwrap_or_else(|error| error.into_inner());
-        if let Some(previous) = *last {
-            if previous.elapsed() < JWKS_REFRESH_MIN_INTERVAL {
+        // Success cools down for the full interval; a failed refresh only
+        // cools down for the short failure backoff so one IdP hiccup cannot
+        // lock out unknown-kid validations for a full minute.
+        let (previous_interval, failed) = match *last {
+            Some((at, previous_failed)) => (
+                if previous_failed {
+                    JWKS_REFRESH_FAILURE_BACKOFF
+                } else {
+                    JWKS_REFRESH_MIN_INTERVAL
+                },
+                previous_failed,
+            ),
+            None => (JWKS_REFRESH_MIN_INTERVAL, false),
+        };
+        if let Some((at, _)) = *last {
+            if at.elapsed() < previous_interval {
                 return false;
             }
         }
-        *last = Some(Instant::now());
+        *last = Some((Instant::now(), failed));
         drop(last);
 
         // Runtime refresh always enforces HTTPS for URL sources to prevent
@@ -74,10 +91,20 @@ impl RefreshableJwksCache {
         match refreshed {
             Ok(keys) => {
                 *self.keys.write().unwrap_or_else(|error| error.into_inner()) = keys;
+                *self
+                    .last_refresh_attempt
+                    .write()
+                    .unwrap_or_else(|error| error.into_inner()) =
+                    Some((Instant::now(), false));
                 true
             }
             Err(error) => {
                 warn!(error = %error, "ingress jwks refresh failed");
+                *self
+                    .last_refresh_attempt
+                    .write()
+                    .unwrap_or_else(|error| error.into_inner()) =
+                    Some((Instant::now(), true));
                 false
             }
         }
