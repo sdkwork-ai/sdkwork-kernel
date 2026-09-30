@@ -272,7 +272,10 @@ impl ModelBridge {
         Ok(())
     }
 
-    /// Get available model descriptors
+    /// Get available model descriptors. Falls back to the mock catalog only
+    /// when mock fallback is explicitly enabled (test construction); a missing
+    /// or empty production provider reports no models instead of phantom ids
+    /// that later fail model resolution.
     pub fn list_models(&self) -> Vec<ModelDescriptor> {
         if let Some(runtime) = &self.agent_runtime {
             if let Ok(provider) = runtime.model_provider() {
@@ -283,7 +286,11 @@ impl ModelBridge {
             }
         }
 
-        self.list_models_mock()
+        if self.allow_mock_fallback {
+            self.list_models_mock()
+        } else {
+            Vec::new()
+        }
     }
 
     fn stream_typed_into(
@@ -647,6 +654,11 @@ impl Default for ModelBridge {
     }
 }
 
+/// Resolve the runtime's first advertised model as the default. When no typed
+/// model provider is registered (test-only construction), fall back to the
+/// mock catalog id only under mock fallback; production construction wired
+/// through [`ModelBridge::with_agent_runtime`] always has a provider whose
+/// catalog supplies the default, so the phantom placeholder never ships.
 fn resolve_default_model_id(runtime: &AgentRuntime) -> String {
     if let Ok(provider) = runtime.model_provider() {
         let models = provider.list_models();
@@ -654,7 +666,7 @@ fn resolve_default_model_id(runtime: &AgentRuntime) -> String {
             return model.model_id.clone();
         }
     }
-    "gpt-4".to_string()
+    String::new()
 }
 
 fn provider_session_id_from_response(response: &ModelResponse) -> KernelResult<Option<String>> {
@@ -1086,8 +1098,16 @@ mod tests {
     }
 
     #[test]
-    fn list_models_returns_catalog() {
+    fn list_models_is_fail_closed_without_mock_fallback() {
+        // Production construction (no runtime, no mock fallback) must not
+        // surface the phantom mock catalog; it reports no models instead.
         let bridge = ModelBridge::new();
+        assert!(bridge.list_models().is_empty());
+    }
+
+    #[test]
+    fn list_models_returns_mock_catalog_only_under_mock_fallback() {
+        let bridge = ModelBridge::with_mock_fallback_enabled();
         let models = bridge.list_models();
         assert_eq!(models.len(), 3);
     }

@@ -1,7 +1,7 @@
 use crate::{
     BridgeEvent, BridgeEventSeverity, BridgeMessageResponse, BridgeModelResult,
     BridgeSessionConfig, BridgeSnapshot, BridgeToolResult, ContextBridge, EventBridge, ModelBridge,
-    SessionBridge, ToolBridge,
+    SessionBridge, ToolBridge, BRIDGE_IDLE_EVICTION,
 };
 use sdkwork_agent_kernel::{
     AgentMessage, AgentMessageRole, AgentPart, AgentSession, KernelResult, ModelRequest,
@@ -64,12 +64,28 @@ impl AgentRuntimeBridge {
     // Session Management
     // =========================================================================
 
+    /// Lazily evict transient bridge state for sessions idle beyond
+    /// [`BRIDGE_IDLE_EVICTION`]. Registration is the natural sweep point: it
+    /// is the only path that grows per-process session capacity, so abandoned
+    /// sessions (clients that never close) are reclaimed exactly when that
+    /// capacity could otherwise be exhausted into hard failures.
+    fn sweep_idle_bridge_state(&mut self) {
+        let evicted = self
+            .session_bridge
+            .sweep_idle_sessions(BRIDGE_IDLE_EVICTION);
+        for session_id in evicted {
+            self.event_bridge.clear_events(&session_id);
+        }
+        self.event_bridge.sweep_idle_sessions(BRIDGE_IDLE_EVICTION);
+    }
+
     /// Register a persisted session in the in-memory bridge runtime.
     pub fn register_session(
         &mut self,
         session_id: &str,
         config: BridgeSessionConfig,
     ) -> KernelResult<AgentSession> {
+        self.sweep_idle_bridge_state();
         self.session_bridge.register_session(session_id, config)
     }
 
@@ -80,6 +96,7 @@ impl AgentRuntimeBridge {
         config: BridgeSessionConfig,
         history: Vec<AgentMessage>,
     ) -> KernelResult<AgentSession> {
+        self.sweep_idle_bridge_state();
         let previous_session = self.session_bridge.get_session(session_id).ok();
         let session = self.session_bridge.register_session(session_id, config)?;
         if let Err(error) = self
@@ -105,6 +122,7 @@ impl AgentRuntimeBridge {
         history_revision: u64,
         history: Vec<AgentMessage>,
     ) -> KernelResult<AgentSession> {
+        self.sweep_idle_bridge_state();
         let previous_session = self.session_bridge.get_session(session_id).ok();
         let session = self.session_bridge.register_session(session_id, config)?;
         if let Err(error) =
@@ -123,6 +141,7 @@ impl AgentRuntimeBridge {
 
     /// Create a new agent session
     pub fn create_session(&mut self, config: BridgeSessionConfig) -> KernelResult<AgentSession> {
+        self.sweep_idle_bridge_state();
         self.session_bridge.create_session(config)
     }
 

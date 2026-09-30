@@ -332,7 +332,8 @@ impl PermissionOperationRepository for PostgresDatabase {
                 .map_err(map_sqlx_error)?;
                 sqlx::query(
                     "UPDATE tasks SET state = 'cancelled', updated_at = $2
-                     WHERE task_id = (SELECT task_id FROM runs WHERE run_id = $1)",
+                     WHERE task_id = (SELECT task_id FROM runs WHERE run_id = $1)
+                       AND state NOT IN ('completed', 'failed', 'cancelled')",
                 )
                 .bind(&operation.run_id)
                 .bind(&decided_at)
@@ -509,7 +510,8 @@ impl PermissionOperationRepository for PostgresDatabase {
                 .await
                 .map_err(map_sqlx_error)?;
                 sqlx::query(
-                    "UPDATE tasks SET state = 'cancelled', updated_at = $2 WHERE task_id = $1",
+                    "UPDATE tasks SET state = 'cancelled', updated_at = $2 WHERE task_id = $1
+                       AND state NOT IN ('completed', 'failed', 'cancelled')",
                 )
                 .bind(&task_id)
                 .bind(&now)
@@ -625,12 +627,15 @@ impl PermissionOperationRepository for PostgresDatabase {
             .execute(&mut *tx)
             .await
             .map_err(map_sqlx_error)?;
-            sqlx::query("UPDATE tasks SET state = 'completed', updated_at = $2 WHERE task_id = $1")
-                .bind(&claim.run.task_id)
-                .bind(&finished_at)
-                .execute(&mut *tx)
-                .await
-                .map_err(map_sqlx_error)?;
+            sqlx::query(
+                "UPDATE tasks SET state = 'completed', updated_at = $2 WHERE task_id = $1
+                   AND state NOT IN ('completed', 'failed', 'cancelled')",
+            )
+            .bind(&claim.run.task_id)
+            .bind(&finished_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx_error)?;
             crate::postgres_repository::postgres_save_event_idempotent(&mut *tx, &event).await?;
             tx.commit().await.map_err(map_sqlx_error)?;
             Ok(())
@@ -705,12 +710,15 @@ impl PermissionOperationRepository for PostgresDatabase {
             .execute(&mut *tx)
             .await
             .map_err(map_sqlx_error)?;
-            sqlx::query("UPDATE tasks SET state = 'failed', updated_at = $2 WHERE task_id = $1")
-                .bind(&claim.run.task_id)
-                .bind(&finished_at)
-                .execute(&mut *tx)
-                .await
-                .map_err(map_sqlx_error)?;
+            sqlx::query(
+                "UPDATE tasks SET state = 'failed', updated_at = $2 WHERE task_id = $1
+                   AND state NOT IN ('completed', 'failed', 'cancelled')",
+            )
+            .bind(&claim.run.task_id)
+            .bind(&finished_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx_error)?;
             crate::postgres_repository::postgres_save_event_idempotent(&mut *tx, &event).await?;
             tx.commit().await.map_err(map_sqlx_error)?;
             Ok(())

@@ -136,6 +136,19 @@ impl ProviderHealth {
         }
     }
 
+    /// Express a degraded provider.
+    ///
+    /// Degraded health reports a working-but-limited provider (partial
+    /// capability registration, reduced capacity). The status vocabulary is
+    /// the bare `"degraded"` token shared with backend-health, execution,
+    /// and rate-limit state reporting; any non-`available` status keeps
+    /// readiness fail-closed for profiles that require full provider health.
+    pub fn degraded(_reason: impl Into<String>) -> Self {
+        Self {
+            status: "degraded".to_string(),
+        }
+    }
+
     /// Whether this health snapshot reports an available provider.
     pub fn is_available(&self) -> bool {
         self.status == "available"

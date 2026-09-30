@@ -9,6 +9,15 @@ use std::sync::Arc;
 
 pub trait RigBackendExecutor: Send + Sync {
     fn invoke_model(&self, request: ModelRequest) -> KernelResult<ModelResponse>;
+
+    /// Abort the in-flight call for `model_request_id` when one exists and
+    /// report whether it was found. Executors that cannot interrupt calls
+    /// report `false` so the backend can fall back to idempotent-ack
+    /// semantics.
+    fn cancel_model(&self, model_request_id: &str) -> KernelResult<bool> {
+        let _ = model_request_id;
+        Ok(false)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,14 +298,19 @@ impl RigBackend {
         }
     }
 
-    /// Best-effort cancellation for the rig engine.
+    /// Cancel an in-flight rig model call.
     ///
-    /// Rig model calls are single synchronous HTTP round trips through the
-    /// cloudrouter SDK; an in-flight call cannot be interrupted once the
-    /// request is on the wire. Cancellation therefore acknowledges the cancel
-    /// with a cancelled response so turn cancellation APIs never surface a
-    /// hard provider error, mirroring the local-turn cancellation semantics.
+    /// With a live executor the abort reaches the spawned provider task: the
+    /// blocked invoke observes a disconnected channel and returns a
+    /// cancelled response, and the in-flight HTTP round trip is dropped. A
+    /// cancelled-again or already-finished request id is an idempotent
+    /// cancelled ack (the caller-visible outcome is terminal either way).
     pub fn cancel_model(&self, model_request_id: &str) -> KernelResult<ModelResponse> {
+        let aborted = match &self.executor {
+            Some(executor) => executor.cancel_model(model_request_id)?,
+            None => false,
+        };
+        let _ = aborted;
         Ok(ModelResponse::cancelled(
             model_request_id.to_string(),
             ids::MODEL_PROVIDER_ID.to_string(),

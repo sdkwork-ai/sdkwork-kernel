@@ -308,7 +308,8 @@ impl PermissionOperationRepository for SqliteDatabase {
             )?;
             tx.execute(
                 "UPDATE tasks SET state = 'cancelled', updated_at = ?2
-                 WHERE task_id = (SELECT task_id FROM runs WHERE run_id = ?1)",
+                 WHERE task_id = (SELECT task_id FROM runs WHERE run_id = ?1)
+                   AND state NOT IN ('completed', 'failed', 'cancelled')",
                 params![operation.run_id, decided_at],
             )?;
         }
@@ -438,7 +439,8 @@ impl PermissionOperationRepository for SqliteDatabase {
                 params![run_id, now],
             )?;
             tx.execute(
-                "UPDATE tasks SET state = 'cancelled', updated_at = ?2 WHERE task_id = ?1",
+                "UPDATE tasks SET state = 'cancelled', updated_at = ?2 WHERE task_id = ?1
+                   AND state NOT IN ('completed', 'failed', 'cancelled')",
                 params![task_id, now],
             )?;
             let event = EventRow {
@@ -530,7 +532,8 @@ impl PermissionOperationRepository for SqliteDatabase {
             params![claim.run.run_id, finished_at],
         )?;
         tx.execute(
-            "UPDATE tasks SET state = 'completed', updated_at = ?2 WHERE task_id = ?1",
+            "UPDATE tasks SET state = 'completed', updated_at = ?2 WHERE task_id = ?1
+               AND state NOT IN ('completed', 'failed', 'cancelled')",
             params![claim.run.task_id, finished_at],
         )?;
         crate::sqlite_repository::sqlite_save_event_idempotent(&tx, event)?;
@@ -599,7 +602,8 @@ impl PermissionOperationRepository for SqliteDatabase {
             ],
         )?;
         tx.execute(
-            "UPDATE tasks SET state = 'failed', updated_at = ?2 WHERE task_id = ?1",
+            "UPDATE tasks SET state = 'failed', updated_at = ?2 WHERE task_id = ?1
+               AND state NOT IN ('completed', 'failed', 'cancelled')",
             params![claim.run.task_id, finished_at],
         )?;
         crate::sqlite_repository::sqlite_save_event_idempotent(&tx, event)?;

@@ -426,9 +426,14 @@ impl SdkBackendRuntime for PythonSdkBackendRuntime {
 const INTERACTION_CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn worker_operation_timeout(request: &SdkRuntimeRequest) -> Duration {
+    // Same deadline contract as the Node runtime: the request's timeout_ms is
+    // the hard process deadline for unary and session-control calls alike.
     let timeout_ms = match &request.operation {
         SdkRuntimeOperation::ModelChat { timeout_ms, .. }
-        | SdkRuntimeOperation::ModelChatStream { timeout_ms, .. } => *timeout_ms,
+        | SdkRuntimeOperation::ModelChatStream { timeout_ms, .. }
+        | SdkRuntimeOperation::SessionInterrupt { timeout_ms, .. }
+        | SdkRuntimeOperation::SessionCompact { timeout_ms, .. }
+        | SdkRuntimeOperation::SessionFork { timeout_ms, .. } => *timeout_ms,
         _ => None,
     };
     timeout_ms

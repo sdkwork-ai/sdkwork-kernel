@@ -336,7 +336,13 @@ impl SessionRepository for InMemoryDatabase {
         }
 
         let limit = resolve_list_limit(query.limit) as usize;
-        let offset = resolve_list_offset(query.offset) as usize;
+        // Keyset cursors and offsets are mutually exclusive (aligned with the
+        // SQLite/PostgreSQL repositories): a cursor forces offset 0.
+        let offset = if query.after_session_id.is_some() {
+            0
+        } else {
+            resolve_list_offset(query.offset)
+        } as usize;
         Ok(offset_limit_page_from_iter(results.into_iter(), limit, offset).items)
     }
 
@@ -485,7 +491,12 @@ impl MessageRepository for InMemoryDatabase {
             }
         }
         let limit = resolve_list_limit(query.limit) as usize;
-        let offset = resolve_list_offset(query.offset) as usize;
+        // A keyset cursor forces offset 0 (aligned with the SQL repositories).
+        let offset = if query.after_message_id.is_some() {
+            0
+        } else {
+            resolve_list_offset(query.offset)
+        } as usize;
         Ok(offset_limit_page_from_iter(results.into_iter(), limit, offset).items)
     }
 
@@ -609,7 +620,12 @@ impl TaskRepository for InMemoryDatabase {
             }
         }
         let limit = resolve_list_limit(query.limit) as usize;
-        let offset = resolve_list_offset(query.offset) as usize;
+        // A keyset cursor forces offset 0 (aligned with the SQL repositories).
+        let offset = if query.after_task_id.is_some() {
+            0
+        } else {
+            resolve_list_offset(query.offset)
+        } as usize;
         Ok(offset_limit_page_from_iter(results.into_iter(), limit, offset).items)
     }
 
@@ -717,7 +733,12 @@ impl EventRepository for InMemoryDatabase {
             results = results.into_iter().skip(cursor_index + 1).collect();
         }
         let limit = resolve_list_limit(query.limit) as usize;
-        let offset = resolve_list_offset(query.offset) as usize;
+        // A keyset cursor forces offset 0 (aligned with the SQL repositories).
+        let offset = if query.after_event_id.is_some() {
+            0
+        } else {
+            resolve_list_offset(query.offset)
+        } as usize;
         Ok(offset_limit_page_from_iter(results.into_iter(), limit, offset).items)
     }
 
@@ -762,8 +783,26 @@ impl EventRepository for InMemoryDatabase {
                 .cmp(&left.created_at)
                 .then_with(|| right.event_id.cmp(&left.event_id))
         });
+        if let Some(after_event_id) = query
+            .after_event_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            let Some(cursor_index) = results
+                .iter()
+                .position(|row| row.event_id == after_event_id)
+            else {
+                return Ok(Vec::new());
+            };
+            results = results.into_iter().skip(cursor_index + 1).collect();
+        }
         let limit = resolve_list_limit(query.limit) as usize;
-        let offset = resolve_list_offset(query.offset) as usize;
+        // A keyset cursor forces offset 0 (aligned with the SQL repositories).
+        let offset = if query.after_event_id.is_some() {
+            0
+        } else {
+            resolve_list_offset(query.offset)
+        } as usize;
         Ok(offset_limit_page_from_iter(results.into_iter(), limit, offset).items)
     }
 
@@ -934,10 +973,16 @@ impl RuntimeSessionWrites for InMemoryDatabase {
             .lock()
             .map_err(|e| DatabaseError::Internal(format!("failed to acquire lock: {e}")))?;
         if let Some(existing) = sessions.get(&session.session_id) {
-            if crate::types::session_provider_conflicts(session, existing)
+            // Aligned with the SQLite/PostgreSQL conditional-sync contract:
+            // an incoming snapshot without `updated_at` is stale by
+            // definition and must not displace an existing row (the shared
+            // `session_snapshot_is_older` would otherwise fall back to
+            // `created_at` and accept it).
+            let stale = session.updated_at.is_none()
+                || crate::types::session_provider_conflicts(session, existing)
                 || crate::types::session_state_regresses_from_terminal(session, existing)
-                || crate::types::session_snapshot_is_older(session, existing)
-            {
+                || crate::types::session_snapshot_is_older(session, existing);
+            if stale {
                 return Ok(false);
             }
         }

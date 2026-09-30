@@ -160,13 +160,15 @@ mod tests {
     }
 
     #[test]
-    fn production_profile_allows_explicit_mock_override() {
+    fn production_profile_rejects_mock_override_at_kernel_level() {
+        // Kernel-level production gate is unconditional; the env override is
+        // development-only (see runtime_topology::mock_provider_invocation_allowed).
         let _lock = env_lock();
         let _profile = EnvVarGuard::set(KERNEL_PROFILE_ID_ENV, Some("standalone.production"));
         let _environment = EnvVarGuard::set(KERNEL_ENVIRONMENT_ENV, Some("production"));
         let _allow = EnvVarGuard::set(ALLOW_MOCK_PROVIDERS_ENV, Some("1"));
 
-        assert!(mock_provider_invocation_allowed());
+        assert!(!mock_provider_invocation_allowed());
     }
 
     #[test]

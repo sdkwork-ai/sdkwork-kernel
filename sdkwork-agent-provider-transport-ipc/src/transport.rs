@@ -8,7 +8,7 @@ use sdkwork_agent_kernel::mock_provider_invocation_allowed_from_env;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -430,6 +430,32 @@ pub struct StdioJsonRpcSession {
     poisoned: Arc<AtomicBool>,
 }
 
+/// Drain the worker's stderr into a bounded tail buffer. Past the cap the
+/// reader keeps consuming and discards excess, so the pipe never fills and a
+/// chatty child cannot deadlock or grow memory unboundedly.
+fn drain_worker_stderr(stderr: ChildStderr, tail: Arc<Mutex<Vec<u8>>>) {
+    let mut reader = BufReader::new(stderr);
+    let mut chunk = [0u8; 4096];
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => {
+                if let Ok(mut tail) = tail.lock() {
+                    let capacity = crate::worker_process::WORKER_STDERR_TAIL_BYTES;
+                    if tail.len() + read > capacity {
+                        // Keep the most recent bytes within the cap.
+                        let overflow = tail.len() + read - capacity;
+                        let keep_from = overflow.min(tail.len());
+                        tail.drain(0..keep_from);
+                    }
+                    let append = read.min(capacity);
+                    tail.extend_from_slice(&chunk[chunk.len() - append..]);
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum PendingResponseMode {
     Unary,
@@ -455,11 +481,16 @@ impl Drop for PendingCall {
 }
 
 impl StdioJsonRpcSession {
-    pub fn spawn(mut command: Command) -> Result<(Self, Child), TransportError> {
+    pub fn spawn(
+        mut command: Command,
+    ) -> Result<(Self, Child, crate::worker_process::StderrTail), TransportError> {
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            // Piped (not null): stderr feeds a bounded tail buffer for crash
+            // diagnostics while the drain thread keeps the pipe empty, so a
+            // chatty worker can neither deadlock nor grow memory unboundedly.
+            .stderr(Stdio::piped());
         let mut child = command
             .spawn()
             .map_err(|error| TransportError::new(format!("failed to spawn worker: {error}")))?;
@@ -471,6 +502,23 @@ impl StdioJsonRpcSession {
             .stdout
             .take()
             .ok_or_else(|| TransportError::new("worker stdout unavailable"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| TransportError::new("worker stderr unavailable"))?;
+        let stderr_tail: crate::worker_process::StderrTail =
+            Arc::new(Mutex::new(Vec::with_capacity(4096)));
+        let drain_tail = stderr_tail.clone();
+        if let Err(error) = thread::Builder::new()
+            .name("sdkwork-provider-stderr-drain".to_string())
+            .spawn(move || drain_worker_stderr(stderr, drain_tail))
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(TransportError::new(format!(
+                "worker stderr drain spawn failed: {error}"
+            )));
+        }
         let pending = Arc::new(Mutex::new(HashMap::new()));
         let poisoned = Arc::new(AtomicBool::new(false));
         let reader_pending = pending.clone();
@@ -495,6 +543,7 @@ impl StdioJsonRpcSession {
                 poisoned,
             },
             child,
+            stderr_tail,
         ))
     }
 

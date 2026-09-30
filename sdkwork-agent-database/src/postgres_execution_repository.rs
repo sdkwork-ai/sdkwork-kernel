@@ -628,9 +628,11 @@ impl RuntimeExecutionRepository for PostgresDatabase {
                 tx.commit().await.map_err(map_sqlx_error)?;
                 return Ok((task, false));
             }
-            if task.state.eq_ignore_ascii_case("completed") {
+            if task.state.eq_ignore_ascii_case("completed")
+                || task.state.eq_ignore_ascii_case("failed")
+            {
                 return Err(DatabaseError::ConstraintViolation(
-                    "completed task cannot be cancelled".to_string(),
+                    "completed or failed task cannot be cancelled".to_string(),
                 ));
             }
             sqlx::query(
@@ -649,6 +651,23 @@ impl RuntimeExecutionRepository for PostgresDatabase {
                 "UPDATE steps SET state = 'cancelled', finished_at = $1, updated_at = $1
                  WHERE run_id IN (SELECT run_id FROM runs WHERE task_id = $2)
                    AND state NOT IN ('completed', 'failed', 'skipped', 'cancelled')",
+            )
+            .bind(&requested_at)
+            .bind(&task_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx_error)?;
+            // Fence out any permission worker holding a live claim for this
+            // task: cancel the operation, drop its lease, bump its fencing
+            // token, and crypto-erase the payload so a stale claim can no
+            // longer complete.
+            sqlx::query(
+                "UPDATE permission_operations SET state = 'cancelled',
+                     payload_ref = '', payload_digest = '', encryption_key_id = NULL,
+                     lease_owner = NULL, lease_expires_at = NULL,
+                     fencing_token = fencing_token + 1, updated_at = $1
+                 WHERE run_id IN (SELECT run_id FROM runs WHERE task_id = $2)
+                   AND state IN ('pending', 'claimable', 'executing')",
             )
             .bind(&requested_at)
             .bind(&task_id)
@@ -831,6 +850,22 @@ impl RuntimeExecutionRepository for PostgresDatabase {
             .execute(&mut *tx)
             .await
             .map_err(map_sqlx_error)?;
+            if is_cancel {
+                // Fence out permission workers holding a live claim on this
+                // run so a stale lease cannot resurrect the cancelled task.
+                sqlx::query(
+                    "UPDATE permission_operations SET state = 'cancelled',
+                         payload_ref = '', payload_digest = '', encryption_key_id = NULL,
+                         lease_owner = NULL, lease_expires_at = NULL,
+                         fencing_token = fencing_token + 1, updated_at = $1
+                     WHERE run_id = $2 AND state IN ('pending', 'claimable', 'executing')",
+                )
+                .bind(&changed_at)
+                .bind(&run_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_sqlx_error)?;
+            }
             sqlx::query("UPDATE tasks SET state = $1, updated_at = $2 WHERE task_id = $3")
                 .bind(task_state)
                 .bind(&changed_at)

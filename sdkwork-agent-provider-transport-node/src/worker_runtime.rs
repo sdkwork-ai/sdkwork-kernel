@@ -733,9 +733,15 @@ impl SdkBackendRuntime for NodeSdkBackendRuntime {
                     || result.get("model_request_id").and_then(Value::as_str) != Some(request_id)
                     || result.get("finish_reason").and_then(Value::as_str) != Some("cancelled")
                 {
+                    // The cooperative interrupt was not acknowledged. Without
+                    // a hard kill the leased worker would keep streaming
+                    // until the request watchdog fires, so terminate the
+                    // worker before surfacing the failure (fail-closed is
+                    // preserved; the stream no longer keeps running).
+                    pool.cancel(request_id).map_err(map_transport_error)?;
                     return Err(SdkRuntimeError::new(
                         "turn_interrupt_unconfirmed",
-                        "Codex Turn interrupt did not return a correlated cancelled terminal acknowledgement",
+                        "Codex Turn interrupt did not return a correlated cancelled terminal acknowledgement; the leased worker was terminated",
                     ));
                 }
                 Ok(true)

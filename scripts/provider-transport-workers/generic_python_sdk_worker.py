@@ -18,6 +18,7 @@ import argparse
 import importlib.util
 import json
 import os
+import collections
 import queue
 import subprocess
 import sys
@@ -266,14 +267,37 @@ class HermesTuiGatewayClient:
             [sys.executable, "-u", "-m", "tui_gateway.entry"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            # Piped (not DEVNULL): the drain thread keeps a bounded tail for
+            # crash diagnostics while preventing a full pipe from deadlocking
+            # the gateway process.
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
         self._process = process
         self._shutdown = False
+        self._stderr_tail = collections.deque(maxlen=64)
         threading.Thread(target=self._read_frames, args=(process,), daemon=True).start()
+        threading.Thread(
+            target=self._drain_stderr,
+            args=(process,),
+            daemon=True,
+        ).start()
         return process
+
+    def _drain_stderr(self, process):
+        if process.stderr is None:
+            return
+        # Consuming every line keeps the pipe empty (no deadlock); the deque
+        # bound holds retained diagnostics constant.
+        for line in process.stderr:
+            self._stderr_tail.append(line.rstrip()[:512])
+
+    def stderr_tail(self):
+        tail = getattr(self, "_stderr_tail", None)
+        if not tail:
+            return ""
+        return "\n".join(tail)
 
     def _session_event_queue(self, session_id):
         with self._session_events_lock:

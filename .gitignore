@@ -73,3 +73,8 @@ Thumbs.db
 **/public/runtime-env.json
 
 # Local build artifacts / workspace junk (auto-sync)
+
+# Python bytecode caches emitted by provider transport worker scripts
+__pycache__/
+*.py[cod]
+.pytest_cache/

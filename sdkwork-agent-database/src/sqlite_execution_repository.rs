@@ -567,9 +567,11 @@ impl RuntimeExecutionRepository for SqliteDatabase {
             tx.commit()?;
             return Ok((task, false));
         }
-        if task.state.eq_ignore_ascii_case("completed") {
+        if task.state.eq_ignore_ascii_case("completed")
+            || task.state.eq_ignore_ascii_case("failed")
+        {
             return Err(DatabaseError::ConstraintViolation(
-                "completed task cannot be cancelled".to_string(),
+                "completed or failed task cannot be cancelled".to_string(),
             ));
         }
         tx.execute(
@@ -584,6 +586,18 @@ impl RuntimeExecutionRepository for SqliteDatabase {
             "UPDATE steps SET state = 'cancelled', finished_at = ?1, updated_at = ?1
              WHERE run_id IN (SELECT run_id FROM runs WHERE task_id = ?2)
                AND state NOT IN ('completed', 'failed', 'skipped', 'cancelled')",
+            params![requested_at, task_id],
+        )?;
+        // Fence out any permission worker holding a live claim for this task:
+        // cancel the operation, drop its lease, bump its fencing token, and
+        // crypto-erase the payload so a stale claim can no longer complete.
+        tx.execute(
+            "UPDATE permission_operations SET state = 'cancelled',
+                 payload_ref = '', payload_digest = '', encryption_key_id = NULL,
+                 lease_owner = NULL, lease_expires_at = NULL,
+                 fencing_token = fencing_token + 1, updated_at = ?1
+             WHERE run_id IN (SELECT run_id FROM runs WHERE task_id = ?2)
+               AND state IN ('pending', 'claimable', 'executing')",
             params![requested_at, task_id],
         )?;
         tx.execute(
@@ -731,6 +745,18 @@ impl RuntimeExecutionRepository for SqliteDatabase {
              WHERE run_id = ?4 AND state NOT IN ('completed','failed','skipped','cancelled')",
             params![step_state, finished_at, changed_at, run_id],
         )?;
+        if action == RunControlAction::Cancel {
+            // Fence out permission workers holding a live claim on this run
+            // so a stale lease cannot resurrect the cancelled run's task.
+            tx.execute(
+                "UPDATE permission_operations SET state = 'cancelled',
+                     payload_ref = '', payload_digest = '', encryption_key_id = NULL,
+                     lease_owner = NULL, lease_expires_at = NULL,
+                     fencing_token = fencing_token + 1, updated_at = ?1
+                 WHERE run_id = ?2 AND state IN ('pending', 'claimable', 'executing')",
+                params![changed_at, run_id],
+            )?;
+        }
         tx.execute(
             "UPDATE tasks SET state = ?1, updated_at = ?2 WHERE task_id = ?3",
             params![task_state, changed_at, current.task_id],

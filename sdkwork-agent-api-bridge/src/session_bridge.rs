@@ -5,6 +5,7 @@ use sdkwork_agent_kernel::{
 };
 use std::collections::HashMap;
 use std::mem::size_of;
+use std::time::{Duration, Instant};
 
 use crate::model_bridge::PROVIDER_SESSION_ID_METADATA;
 
@@ -20,6 +21,12 @@ const MAX_SESSION_BRIDGE_SESSIONS: usize = 4096;
 const MAX_SESSION_BRIDGE_SESSION_BYTES: usize = 512 * 1024;
 /// Hard cap for all transient session configuration retained by one process.
 const MAX_GLOBAL_SESSION_BRIDGE_SESSION_BYTES: usize = 64 * 1024 * 1024;
+/// Idle duration after which a session's transient bridge state becomes
+/// eligible for lazy eviction. Bridge state is a re-hydratable cache of the
+/// durable store, so an evicted session is rebuilt from persistence on its
+/// next access; eviction only bounds memory for sessions abandoned without
+/// an explicit close.
+pub const BRIDGE_IDLE_EVICTION: Duration = Duration::from_secs(60 * 60);
 
 /// Manages session lifecycle and message history
 pub struct SessionBridge {
@@ -30,6 +37,7 @@ pub struct SessionBridge {
     history_revisions: HashMap<String, u64>,
     session_bytes: HashMap<String, usize>,
     total_session_bytes: usize,
+    last_activity: HashMap<String, Instant>,
 }
 
 impl SessionBridge {
@@ -42,7 +50,30 @@ impl SessionBridge {
             history_revisions: HashMap::new(),
             session_bytes: HashMap::new(),
             total_session_bytes: 0,
+            last_activity: HashMap::new(),
         }
+    }
+
+    fn touch(&mut self, session_id: &str) {
+        self.last_activity
+            .insert(session_id.to_string(), Instant::now());
+    }
+
+    /// Evict transient state for sessions idle beyond `idle_for` and return
+    /// the evicted session ids so callers can release dependent state (event
+    /// snapshots, per-session locks) held elsewhere.
+    pub fn sweep_idle_sessions(&mut self, idle_for: Duration) -> Vec<String> {
+        let cutoff = Instant::now();
+        let evicted: Vec<String> = self
+            .last_activity
+            .iter()
+            .filter(|(_, activity)| cutoff.duration_since(**activity) >= idle_for)
+            .map(|(session_id, _)| session_id.clone())
+            .collect();
+        for session_id in &evicted {
+            self.remove_session(session_id);
+        }
+        evicted
     }
 
     /// Create a new session with a caller-provided session id.
@@ -74,6 +105,7 @@ impl SessionBridge {
             .total_session_bytes
             .checked_add(retained_bytes)
             .ok_or_else(|| KernelError::resource_exhausted("session byte count overflow"))?;
+        self.touch(session_id);
 
         Ok(session)
     }
@@ -94,11 +126,13 @@ impl SessionBridge {
         self.histories.insert(session_id.clone(), Vec::new());
         self.history_bytes.insert(session_id.clone(), 0);
         self.history_revisions.insert(session_id.clone(), 0);
-        self.session_bytes.insert(session_id, retained_bytes);
+        self.session_bytes
+            .insert(session_id.clone(), retained_bytes);
         self.total_session_bytes = self
             .total_session_bytes
             .checked_add(retained_bytes)
             .ok_or_else(|| KernelError::resource_exhausted("session byte count overflow"))?;
+        self.touch(&session_id);
 
         Ok(session)
     }
@@ -143,6 +177,7 @@ impl SessionBridge {
         self.session_bytes
             .insert(session_id.to_string(), retained_bytes);
         self.total_session_bytes = projected_total;
+        self.touch(session_id);
         Ok(updated)
     }
 
@@ -189,8 +224,9 @@ impl SessionBridge {
             ));
         }
         self.sessions.insert(session_id.clone(), session);
-        self.session_bytes.insert(session_id, retained_bytes);
+        self.session_bytes.insert(session_id.clone(), retained_bytes);
         self.total_session_bytes = projected_total;
+        self.touch(&session_id);
         Ok(())
     }
 
@@ -211,7 +247,6 @@ impl SessionBridge {
         }
         Ok(())
     }
-
     fn bind_provider_session_id(
         &mut self,
         session_id: &str,
@@ -282,6 +317,7 @@ impl SessionBridge {
 
     /// Remove a session and its in-bridge message history from transient runtime state.
     pub fn remove_session(&mut self, session_id: &str) -> bool {
+        self.last_activity.remove(session_id);
         self.histories.remove(session_id);
         if let Some(removed_bytes) = self.history_bytes.remove(session_id) {
             self.total_history_bytes = self.total_history_bytes.saturating_sub(removed_bytes);
@@ -401,6 +437,7 @@ impl SessionBridge {
                 session.record_message_received();
             }
         }
+        self.touch(session_id);
         Ok(())
     }
 
@@ -445,6 +482,7 @@ impl SessionBridge {
         self.history_bytes
             .insert(session_id.to_string(), retained_bytes);
         self.total_history_bytes = projected_total;
+        self.touch(session_id);
         Ok(())
     }
 
@@ -525,6 +563,7 @@ impl SessionBridge {
         if let Some(removed_bytes) = self.history_bytes.insert(session_id.to_string(), 0) {
             self.total_history_bytes = self.total_history_bytes.saturating_sub(removed_bytes);
         }
+        self.touch(session_id);
         Ok(())
     }
 
@@ -829,6 +868,27 @@ mod tests {
         let session = bridge.create_session(test_config()).expect("created");
         let retrieved = bridge.get_session(&session.session_id).expect("found");
         assert_eq!(session.session_id, retrieved.session_id);
+    }
+
+    #[test]
+    fn sweep_evicts_idle_sessions_and_clears_bookkeeping() {
+        let mut bridge = SessionBridge::new();
+        let first = bridge.create_session(test_config()).expect("created");
+        let second = bridge.create_session(test_config()).expect("created");
+
+        // A zero-duration idle threshold sweeps every registered session and
+        // clears all satellite bookkeeping (activity entries, byte counters).
+        let evicted = bridge.sweep_idle_sessions(Duration::ZERO);
+        assert!(evicted.contains(&first.session_id));
+        assert!(evicted.contains(&second.session_id));
+        assert_eq!(evicted.len(), 2);
+        assert!(bridge.get_session(&first.session_id).is_err());
+        assert!(bridge.get_session(&second.session_id).is_err());
+        assert!(bridge.last_activity.is_empty());
+        assert_eq!(bridge.total_session_bytes, 0);
+        assert_eq!(bridge.total_history_bytes, 0);
+        // Sweeping an empty bridge is a no-op.
+        assert!(bridge.sweep_idle_sessions(Duration::ZERO).is_empty());
     }
 
     #[test]

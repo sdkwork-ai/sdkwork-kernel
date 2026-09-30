@@ -1,5 +1,6 @@
 use crate::types::BridgeEvent;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 /// Maximum in-bridge events retained per session.
 const MAX_SESSION_BRIDGE_EVENTS: usize = 512;
@@ -10,6 +11,7 @@ const MAX_GLOBAL_BRIDGE_EVENTS: usize = 4096;
 pub struct EventBridge {
     events: HashMap<String, Vec<BridgeEvent>>,
     global_events: Vec<BridgeEvent>,
+    last_activity: HashMap<String, Instant>,
 }
 
 impl EventBridge {
@@ -17,6 +19,7 @@ impl EventBridge {
         Self {
             events: HashMap::new(),
             global_events: Vec::new(),
+            last_activity: HashMap::new(),
         }
     }
 
@@ -26,6 +29,8 @@ impl EventBridge {
             if let Some(session_id) = &event.session_id {
                 let session_events = self.events.entry(session_id.clone()).or_default();
                 session_events.push(event.clone());
+                self.last_activity
+                    .insert(session_id.clone(), Instant::now());
                 Self::trim_events(session_events, MAX_SESSION_BRIDGE_EVENTS);
             }
             self.global_events.push(event.clone());
@@ -46,12 +51,32 @@ impl EventBridge {
     /// Clear events for a session
     pub fn clear_events(&mut self, session_id: &str) {
         self.events.remove(session_id);
+        self.last_activity.remove(session_id);
     }
 
     /// Clear all events
     pub fn clear_all(&mut self) {
         self.events.clear();
         self.global_events.clear();
+        self.last_activity.clear();
+    }
+
+    /// Drop per-session event snapshots for sessions idle beyond `idle_for`
+    /// (event keys previously persisted until an explicit session close) and
+    /// return the number of keys removed.
+    pub fn sweep_idle_sessions(&mut self, idle_for: Duration) -> usize {
+        let cutoff = Instant::now();
+        let idle_keys: Vec<String> = self
+            .last_activity
+            .iter()
+            .filter(|(_, activity)| cutoff.duration_since(**activity) >= idle_for)
+            .map(|(session_id, _)| session_id.clone())
+            .collect();
+        let removed = idle_keys.len();
+        for session_id in idle_keys {
+            self.clear_events(&session_id);
+        }
+        removed
     }
 
     fn trim_events(events: &mut Vec<BridgeEvent>, max_events: usize) {

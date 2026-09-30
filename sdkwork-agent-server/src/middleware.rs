@@ -269,20 +269,30 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
 ///
 /// axum 0.8 turns extractor rejections (unknown query parameters, malformed
 /// JSON bodies, bad path values) into a `text/plain` 400 without `code` or
-/// `traceId`. Every middleware and handler in this server already returns
-/// `application/problem+json`, so a `400` with `text/plain` inside the
-/// internal runtime surface can only be an extractor rejection; it is
-/// normalized to `40003 INVALID_PARAMETER` per `PAGINATION_SPEC.md` §10.1.
+/// `traceId`, and `tower_http::TimeoutLayer` fires a bare 408 with no body at
+/// all. Every middleware and handler in this server already returns
+/// `application/problem+json`, so a `400` with `text/plain`, or a bare `408`,
+/// inside the internal runtime surface can only come from those layers; both
+/// are normalized to the problem contract (`40003 INVALID_PARAMETER` for
+/// rejections per `PAGINATION_SPEC.md` §10.1, and the mapped timeout code for
+/// 408) so every error path carries `code` and `traceId`.
 pub async fn extractor_rejection_normalizer(request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let response = next.run(request).await;
+    if !path.starts_with(crate::runtime_routes::INTERNAL_RUNTIME_MOUNT_PREFIX) {
+        return response;
+    }
+    let content_type = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     let is_plain_400 = response.status() == StatusCode::BAD_REQUEST
-        && response
-            .headers()
-            .get(axum::http::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|content_type| content_type.starts_with("text/plain"));
-    if !is_plain_400 || !path.starts_with(crate::runtime_routes::INTERNAL_RUNTIME_MOUNT_PREFIX) {
+        && content_type.starts_with("text/plain");
+    let is_bare_timeout = response.status() == StatusCode::REQUEST_TIMEOUT
+        && !content_type.starts_with("application/problem+json");
+    if !is_plain_400 && !is_bare_timeout {
         return response;
     }
     let trace_id = response
@@ -291,6 +301,13 @@ pub async fn extractor_rejection_normalizer(request: Request, next: Next) -> Res
         .and_then(|value| value.to_str().ok())
         .and_then(crate::observability::trace_id_from_traceparent)
         .unwrap_or_else(generate_request_id);
+    if is_bare_timeout {
+        warn!(path = %path, "normalized middleware timeout to the problem contract");
+        return ProblemDetail::new(StatusCode::REQUEST_TIMEOUT)
+            .with_detail("request timed out before completion")
+            .with_trace_id(trace_id)
+            .into_response();
+    }
     warn!(path = %path, "normalized extractor rejection to the problem contract");
     ProblemDetail::new(StatusCode::BAD_REQUEST)
         .with_detail("request parameters could not be parsed")

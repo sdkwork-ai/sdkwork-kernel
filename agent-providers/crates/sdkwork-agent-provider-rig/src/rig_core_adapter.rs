@@ -1,6 +1,7 @@
 use std::{
-    sync::{mpsc, Arc},
-    time::Duration,
+    collections::HashMap,
+    sync::{mpsc, Mutex},
+    time::{Duration, Instant},
 };
 
 use rig_core::client::CompletionClient;
@@ -41,6 +42,68 @@ impl RigCoreKnowledgeAdapter {
     }
 }
 
+/// Registry of in-flight rig model calls keyed by `model_request_id`, so a
+/// cancel can abort the spawned provider task instead of letting it run to
+/// completion. Entries are removed on completion, failure, and cancellation
+/// via a scope guard, so completed calls never retain capacity.
+#[derive(Default)]
+pub struct RigInflightRegistry {
+    entries: Mutex<HashMap<String, (tokio::task::AbortHandle, Instant)>>,
+}
+
+impl RigInflightRegistry {
+    fn insert(&self, model_request_id: &str, handle: tokio::task::AbortHandle) {
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        entries.insert(
+            model_request_id.to_string(),
+            (handle, Instant::now()),
+        );
+    }
+
+    /// Abort the in-flight task for `model_request_id` and report whether one
+    /// was found.
+    fn abort(&self, model_request_id: &str) -> bool {
+        let handle = {
+            let mut entries = self
+                .entries
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            entries.remove(model_request_id).map(|(handle, _)| handle)
+        };
+        match handle {
+            Some(handle) => {
+                handle.abort();
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn remove(&self, model_request_id: &str) {
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        entries.remove(model_request_id);
+    }
+}
+
+/// Scope guard that unconditionally removes the in-flight entry when the
+/// invoke returns, so error and timeout paths cannot leak registry entries.
+struct InflightGuard<'a> {
+    registry: &'a RigInflightRegistry,
+    model_request_id: String,
+}
+
+impl Drop for InflightGuard<'_> {
+    fn drop(&mut self) {
+        self.registry.remove(&self.model_request_id);
+    }
+}
+
 pub struct RigCoreOpenAiExecutor {
     host: Arc<dyn HostProvider + Send + Sync>,
     api_key_secret_ref: String,
@@ -49,6 +112,7 @@ pub struct RigCoreOpenAiExecutor {
     /// the vendor's default endpoint.
     base_url: Option<String>,
     runtime: Arc<tokio::runtime::Runtime>,
+    inflight: Arc<RigInflightRegistry>,
 }
 
 impl RigCoreOpenAiExecutor {
@@ -68,6 +132,7 @@ impl RigCoreOpenAiExecutor {
             default_model_id: default_model_id.into(),
             base_url,
             runtime: Arc::new(runtime),
+            inflight: Arc::new(RigInflightRegistry::default()),
         })
     }
 }
@@ -120,10 +185,24 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
                 });
             let _ = sender.send(result);
         });
+        self.inflight
+            .insert(&request.model_request_id, task.abort_handle());
+        let _inflight_guard = InflightGuard {
+            registry: &self.inflight,
+            model_request_id: request.model_request_id.clone(),
+        };
         let text = match receiver.recv_timeout(timeout) {
             Ok(Ok(text)) => text,
             Ok(Err(error)) => return Err(error),
-            Err(_) => {
+            // A cancel aborted the task, so the sender dropped without
+            // delivering a result.
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Ok(
+                    ModelResponse::cancelled(request.model_request_id, ids::MODEL_PROVIDER_ID)
+                        .with_finish_reason("cancelled"),
+                );
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
                 task.abort();
                 return Err(elapsed_timeout(timeout));
             }
@@ -133,6 +212,10 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
             ModelResponse::text(request.model_request_id, ids::MODEL_PROVIDER_ID, text)
                 .with_finish_reason("stop"),
         )
+    }
+
+    fn cancel_model(&self, model_request_id: &str) -> KernelResult<bool> {
+        Ok(self.inflight.abort(model_request_id))
     }
 }
 

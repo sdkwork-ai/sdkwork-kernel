@@ -646,13 +646,23 @@ impl ToolExecutionService {
         {
             crate::PermissionHookAction::Continue => {}
             crate::PermissionHookAction::Approve { reason } => {
+                // A hook approval substitutes for the interactive human
+                // approval only; the policy provider still gates the call
+                // (fail-closed), and an explicit policy Deny still wins.
                 let descriptor = provider.describe_tool(&request.tool_call.tool_id)?;
-                let policy_decision = PolicyDecision::allow(
-                    format!("hook-approve.{}", request.tool_call.tool_call_id),
-                    permission_context.permission_request_id.clone(),
-                    "kernel.hook",
-                )
-                .with_safe_reason(reason);
+                let policy_request =
+                    provider.authorize_tool_call(&descriptor, &request.tool_call)?;
+                let mut policy_decision = runtime.policy_provider()?.evaluate(policy_request)?;
+                if policy_decision.decision == PolicyDecisionValue::NeedsApproval {
+                    policy_decision =
+                        PolicyDecision::allow(
+                            format!("hook-approve.{}", request.tool_call.tool_call_id),
+                            permission_context.permission_request_id.clone(),
+                            "kernel.hook",
+                        )
+                        .with_safe_reason(reason);
+                }
+                self.ensure_allowed(&policy_decision, &descriptor, &request.tool_call)?;
                 let tool_call =
                     self.with_policy_metadata(request.tool_call, &descriptor, &policy_decision);
                 let result = provider.invoke_tool(tool_call.clone())?;

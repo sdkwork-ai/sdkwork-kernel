@@ -2215,9 +2215,16 @@ pub async fn delete_session(
         .persist(move |persistence| persistence.delete_session(&session_id))
         .await
         .map_err(|error| ApiError::from_persistence(error, &trace_id))?;
-    state
-        .runtime
-        .release_session_state(&session_for_delete)
+    // Release blocks on the per-session turn lock, which a concurrent turn
+    // holds across its provider call; offload like close_session so the
+    // async runtime never parks a worker on that lock.
+    let runtime = state.runtime.clone();
+    tokio::task::spawn_blocking(move || runtime.release_session_state(&session_for_delete))
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, trace_id = %trace_id, "session delete cleanup worker failed");
+            ApiError::internal("session delete cleanup worker failed", &trace_id)
+        })?
         .map_err(|error| ApiError::from_kernel(error, &trace_id))?;
     Ok(api_no_content(&trace_id))
 }
@@ -3257,9 +3264,22 @@ pub async fn cancel_model(
         .map_err(|error| ApiError::from_persistence(error, &trace_id))?;
     ensure_session_access_api(&state, &ctx, &row, &trace_id)?;
 
+    // Provider cancellation traverses the same transport as invocation, so it
+    // must run through provider admission off the async runtime rather than
+    // blocking a Tokio worker on provider I/O.
+    let admission_lease = state
+        .runtime
+        .acquire_provider_admission()
+        .await
+        .map_err(|error| ApiError::from_kernel(error, &trace_id))?;
+    let model_request_id = request.model_request_id.clone();
+    let provider_id = request.provider_id.clone();
     let response = state
         .runtime
-        .cancel_model(&request.model_request_id, request.provider_id.as_deref())
+        .run_provider_admitted(admission_lease, move |runtime| {
+            runtime.cancel_model(&model_request_id, provider_id.as_deref())
+        })
+        .await
         .map_err(|error| ApiError::from_kernel(error, &trace_id))?;
 
     Ok(api_item(

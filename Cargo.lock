@@ -10719,6 +10719,7 @@ dependencies = [
 name = "sdkwork-agent-provider-transport-ipc"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "pretty_assertions",
  "sdkwork-agent-kernel",
  "serde",

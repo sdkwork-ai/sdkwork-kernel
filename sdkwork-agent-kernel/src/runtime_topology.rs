@@ -50,8 +50,13 @@ pub fn mock_provider_override_disabled_from_env() -> bool {
 }
 
 pub fn mock_provider_invocation_allowed(environment: &str, profile_id: Option<&str>) -> bool {
+    // Production is an unconditional fail-closed gate at the kernel level:
+    // the `SDKWORK_KERNEL_ALLOW_MOCK_PROVIDERS` override exists for
+    // development environments only. Production deployments of embedded
+    // runtimes (no server preflight in front) must not be able to flip into
+    // mock responses by environment variable.
     if is_production_kernel_profile(environment, profile_id) {
-        return mock_provider_override_enabled_from_env();
+        return false;
     }
 
     if mock_provider_override_disabled_from_env() {
@@ -157,12 +162,19 @@ mod tests {
     }
 
     #[test]
-    fn production_profile_allows_explicit_mock_override() {
+    fn production_profile_rejects_mock_override_at_kernel_level() {
+        // Production is an unconditional fail-closed gate: the env override
+        // exists for development profiles only, so embedded runtimes without
+        // a server preflight cannot be flipped into mock responses.
         let _lock = env_lock();
         let _allow = EnvVarGuard::set(ALLOW_MOCK_PROVIDERS_ENV, Some("1"));
-        assert!(mock_provider_invocation_allowed(
+        assert!(!mock_provider_invocation_allowed(
             "production",
             Some("standalone.production")
+        ));
+        assert!(!mock_provider_invocation_allowed(
+            "production",
+            Some("cloud.production")
         ));
     }
 }

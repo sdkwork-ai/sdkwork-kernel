@@ -8,19 +8,32 @@ pub struct BackendSelection<'a> {
     pub backend: &'a BackendCandidate,
 }
 
-/// Select the first backend candidate that matches priority order and passes health.
+/// Select the first backend candidate that matches priority order and passes
+/// health. A `None` health probe (driver registered but never probed, or
+/// absent from the health source) is treated as unhealthy: backend selection
+/// is fail-closed, and a driver that has not proven health cannot win a
+/// binding.
 pub fn select_backend<'a>(
     capability: &'a CapabilityBinding,
     priority: &[SdkBackendKind],
     driver_health: impl Fn(&str) -> Option<SdkDriverHealth>,
 ) -> Option<BackendSelection<'a>> {
+    let probed_health =
+        |driver_id: &str| -> Option<SdkDriverHealth> {
+            driver_health(driver_id).or_else(|| {
+                Some(SdkDriverHealth {
+                    status: crate::driver::SdkDriverStatus::Unhealthy,
+                    message: Some("driver health is unknown (never probed)".to_string()),
+                })
+            })
+        };
     for kind in priority {
         for backend in &capability.backends {
             if backend.kind != *kind {
                 continue;
             }
-            let health = driver_health(&backend.driver_id).unwrap_or_else(SdkDriverHealth::healthy);
-            if health.is_usable() {
+            let health = probed_health(&backend.driver_id);
+            if health.is_some_and(|health| health.is_usable()) {
                 return Some(BackendSelection {
                     capability_id: capability.capability_id.as_str(),
                     backend,
@@ -31,8 +44,8 @@ pub fn select_backend<'a>(
 
     // Fall back to manifest order when priority reordering yields no healthy match.
     for backend in &capability.backends {
-        let health = driver_health(&backend.driver_id).unwrap_or_else(SdkDriverHealth::healthy);
-        if health.is_usable() {
+        let health = probed_health(&backend.driver_id);
+        if health.is_some_and(|health| health.is_usable()) {
             return Some(BackendSelection {
                 capability_id: capability.capability_id.as_str(),
                 backend,

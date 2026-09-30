@@ -2,7 +2,7 @@
 
 use sdkwork_agent_database::{
     AgentDatabase, DatabaseError, EventQuery, EventRepository, EventRow, MessageQuery,
-    MessageRepository, MessageRow, PermissionQuery, PermissionRepository, PermissionRow,
+    MessageRepository, MessageRow, PermissionQuery, PermissionRepository, PermissionRow, TaskRow,
     RuntimeMaintenance, RuntimeSessionWrites, SessionRepository, SessionRow, SqliteDatabase,
     TaskRepository,
 };
@@ -2087,4 +2087,222 @@ fn sqlite_retention_is_bounded_transactional_and_preserves_live_work() {
     assert!(schema.drift_free);
     assert_eq!(schema.version, schema.expected_version);
     db.run_maintenance().expect("sqlite maintenance");
+}
+
+#[test]
+fn sqlite_task_cancellation_fences_claimed_permission_operation() {
+    use sdkwork_agent_database::{
+        ActionKind, PermissionOperationRepository, PermissionOperationRow, PermissionOperationState,
+        PermissionPayloadKind, RunRow, RunState, RuntimeExecutionRepository, StepRow, StepState,
+    };
+
+    let db = migrated_sqlite();
+    let session_id = "session.permission.cancel.sqlite";
+    let task_id = "task.permission.cancel.sqlite";
+    let run_id = "run.permission.cancel.sqlite";
+    let step_id = "step.permission.cancel.sqlite";
+    let permission_id = "permission.cancel.sqlite";
+    db.save_session(&scoped_session(session_id, "tenant.1", "user.1"))
+        .expect("session");
+
+    let now = "2026-07-17T00:00:00Z";
+    let permission = PermissionRow {
+        permission_request_id: permission_id.to_string(),
+        session_id: Some(session_id.to_string()),
+        category: "tool.invoke".to_string(),
+        resource: "tool.protected".to_string(),
+        side_effect_level: "side_effectful".to_string(),
+        reason: "approval required".to_string(),
+        status: "pending".to_string(),
+        owner_tenant_id: Some("tenant.1".to_string()),
+        owner_user_ref: Some("user.1".to_string()),
+        created_at: now.to_string(),
+        updated_at: None,
+    };
+    let task = TaskRow {
+        task_id: task_id.to_string(),
+        session_id: session_id.to_string(),
+        instruction: "execute approved tool".to_string(),
+        state: "accepted".to_string(),
+        created_at: now.to_string(),
+        updated_at: Some(now.to_string()),
+    };
+    let run = RunRow {
+        run_id: run_id.to_string(),
+        task_id: task_id.to_string(),
+        session_id: session_id.to_string(),
+        attempt: 1,
+        state: RunState::AwaitingPermission,
+        next_attempt_at: None,
+        lease_owner: None,
+        lease_expires_at: None,
+        fencing_token: 0,
+        cancel_requested_at: None,
+        started_at: None,
+        finished_at: None,
+        error_kind: None,
+        error_code: None,
+        error_detail: None,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+    };
+    let step = StepRow {
+        step_id: step_id.to_string(),
+        run_id: run_id.to_string(),
+        sequence_no: 0,
+        action_kind: ActionKind::ToolCall,
+        state: StepState::AwaitingPermission,
+        provider_id: Some("provider.tool".to_string()),
+        descriptor_revision: Some("1.0.0".to_string()),
+        policy_revision: Some("1.0.0".to_string()),
+        causation_step_id: None,
+        idempotency_key_hash: None,
+        result_json: None,
+        error_kind: None,
+        error_code: None,
+        error_detail: None,
+        started_at: None,
+        finished_at: None,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+    };
+    let operation = PermissionOperationRow {
+        permission_request_id: permission_id.to_string(),
+        run_id: run_id.to_string(),
+        step_id: step_id.to_string(),
+        tool_call_id: "tool-call.cancel.sqlite".to_string(),
+        provider_id: "provider.tool".to_string(),
+        descriptor_revision: "1.0.0".to_string(),
+        policy_revision: "1.0.0".to_string(),
+        payload_kind: PermissionPayloadKind::Ciphertext,
+        payload_ref: "ciphertext".to_string(),
+        payload_digest: "digest".to_string(),
+        encryption_key_id: Some("key.v1".to_string()),
+        state: PermissionOperationState::Pending,
+        expires_at: "2099-01-01T00:00:00Z".to_string(),
+        lease_owner: None,
+        lease_expires_at: None,
+        fencing_token: 0,
+        result_json: None,
+        error_kind: None,
+        error_code: None,
+        error_detail: None,
+        created_at: now.to_string(),
+        updated_at: now.to_string(),
+    };
+    let requested = EventRow {
+        event_id: "event.permission.requested.cancel.sqlite".to_string(),
+        session_id: Some(session_id.to_string()),
+        event_type: "permission.requested".to_string(),
+        severity: "warn".to_string(),
+        payload: None,
+        created_at: now.to_string(),
+    };
+    db.create_permission_execution(&permission, &task, &run, &step, &operation, &requested)
+        .expect("permission execution");
+    db.decide_permission_operation(
+        permission_id,
+        "allow",
+        now,
+        &EventRow {
+            event_id: "event.permission.allowed.cancel.sqlite".to_string(),
+            event_type: "permission.allowed".to_string(),
+            ..requested.clone()
+        },
+    )
+    .expect("allow");
+
+    let claim = db
+        .claim_permission_operation("worker.one", now, "2099-01-01T00:00:00Z")
+        .expect("claim")
+        .expect("one claim");
+
+    let cancelled = db
+        .request_task_cancellation(
+            task_id,
+            "2026-07-17T00:01:00Z",
+            &EventRow {
+                event_id: "event.task.cancelled.cancel.sqlite".to_string(),
+                session_id: Some(session_id.to_string()),
+                event_type: "task.cancelled".to_string(),
+                severity: "info".to_string(),
+                payload: None,
+                created_at: "2026-07-17T00:01:00Z".to_string(),
+            },
+        )
+        .expect("cancel")
+        .0;
+    assert_eq!(cancelled.state, "cancelled");
+
+    // The stale claim must be fenced out: its fencing token no longer matches.
+    let fenced = db.complete_permission_operation(
+        &claim,
+        r#"{"output":"resurrected"}"#,
+        "2026-07-17T00:02:00Z",
+        &EventRow {
+            event_id: "event.permission.completed.cancel.sqlite".to_string(),
+            session_id: Some(session_id.to_string()),
+            event_type: "permission.operation.completed".to_string(),
+            severity: "info".to_string(),
+            payload: None,
+            created_at: "2026-07-17T00:02:00Z".to_string(),
+        },
+    );
+    assert!(
+        matches!(fenced, Err(DatabaseError::ConstraintViolation(_))),
+        "stale permission claim must be fenced out after task cancellation, got {fenced:?}"
+    );
+
+    // The task must stay cancelled and the operation must be cancelled with a
+    // crypto-erased payload.
+    let stored_task = db.load_task(task_id).expect("load task").expect("task");
+    assert_eq!(stored_task.state, "cancelled");
+    let stored = db
+        .load_permission_operation(permission_id)
+        .expect("load")
+        .expect("operation");
+    assert_eq!(stored.state, PermissionOperationState::Cancelled);
+    assert!(stored.payload_ref.is_empty());
+    assert!(stored.payload_digest.is_empty());
+    assert!(stored.encryption_key_id.is_none());
+    let _ = db.delete_session_cascade(session_id);
+}
+
+#[test]
+fn sqlite_request_task_cancellation_rejects_failed_task() {
+    use sdkwork_agent_database::RuntimeExecutionRepository;
+
+    let db = migrated_sqlite();
+    let session_id = "session.cancel.failed.sqlite";
+    let task_id = "task.cancel.failed.sqlite";
+    db.save_session(&scoped_session(session_id, "tenant.1", "user.1"))
+        .expect("session");
+    db.save_task(&TaskRow {
+        task_id: task_id.to_string(),
+        session_id: session_id.to_string(),
+        instruction: "already failed".to_string(),
+        state: "failed".to_string(),
+        created_at: "2026-07-17T00:00:00Z".to_string(),
+        updated_at: Some("2026-07-17T00:01:00Z".to_string()),
+    })
+    .expect("task");
+    let result = db.request_task_cancellation(
+        task_id,
+        "2026-07-17T00:02:00Z",
+        &EventRow {
+            event_id: "event.task.cancelled.failed.sqlite".to_string(),
+            session_id: Some(session_id.to_string()),
+            event_type: "task.cancelled".to_string(),
+            severity: "info".to_string(),
+            payload: None,
+            created_at: "2026-07-17T00:02:00Z".to_string(),
+        },
+    );
+    assert!(
+
+        matches!(result, Err(DatabaseError::ConstraintViolation(_))),
+        "failed task must reject cancellation, got {result:?}"
+    );
+    let stored = db.load_task(task_id).expect("load").expect("task");
+    assert_eq!(stored.state, "failed");
 }

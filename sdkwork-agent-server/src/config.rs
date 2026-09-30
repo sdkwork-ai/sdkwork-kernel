@@ -211,7 +211,9 @@ impl ServerConfig {
             config.log_level = level;
         }
         if let Ok(cors) = std::env::var("SDKWORK_CORS_ENABLED") {
-            config.cors_enabled = cors.parse().unwrap_or(true);
+            config.cors_enabled = cors.trim().parse().map_err(|error| {
+                anyhow::anyhow!("SDKWORK_CORS_ENABLED must be true or false: {error}")
+            })?;
         }
         if let Ok(origins) = std::env::var("SDKWORK_CORS_ALLOWED_ORIGINS") {
             config.cors_origins = origins.split(',').map(|s| s.trim().to_string()).collect();
@@ -342,10 +344,14 @@ impl ServerConfig {
             }
         }
         if let Ok(rps) = std::env::var("SDKWORK_RATE_LIMIT_RPS") {
-            config.rate_limit_rps = rps.parse().unwrap_or(0);
+            config.rate_limit_rps = rps.trim().parse().map_err(|error| {
+                anyhow::anyhow!("SDKWORK_RATE_LIMIT_RPS must be a non-negative integer: {error}")
+            })?;
         }
         if let Ok(burst) = std::env::var("SDKWORK_RATE_LIMIT_BURST") {
-            config.rate_limit_burst = burst.parse().unwrap_or(200);
+            config.rate_limit_burst = burst.trim().parse().map_err(|error| {
+                anyhow::anyhow!("SDKWORK_RATE_LIMIT_BURST must be a non-negative integer: {error}")
+            })?;
         }
         if let Ok(redis_url) = std::env::var("SDKWORK_RATE_LIMIT_REDIS_URL")
             .or_else(|_| std::env::var("SDKWORK_REDIS_URL"))
@@ -616,7 +622,12 @@ impl ServerConfig {
     }
 
     pub fn requires_distributed_idempotency(&self) -> bool {
-        self.is_production_kernel_profile() && self.production_scaleout_profile()
+        // Every production profile, not only scale-out: replayable mutations
+        // must survive replica restarts and stay consistent across replicas,
+        // and the bounded-entry memory store has no total-byte budget, so a
+        // production deployment caching model-output-sized responses in
+        // process could accumulate gigabytes. Startup fails closed instead.
+        self.is_production_kernel_profile()
     }
 
     pub fn ingress_auth_secured(&self) -> bool {
