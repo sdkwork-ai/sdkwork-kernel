@@ -897,6 +897,7 @@ mod tests {
                     SdkRuntimeOperationKind::SessionList,
                     SdkRuntimeOperationKind::SessionHistory,
                 ],
+                execution_scope: crate::binding::CapabilityExecutionScope::TransportRuntime,
             }],
             missing_required: Vec::new(),
             degraded_optional: Vec::new(),

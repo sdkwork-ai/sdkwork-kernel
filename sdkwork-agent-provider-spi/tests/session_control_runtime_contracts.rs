@@ -3,10 +3,10 @@ use sdkwork_agent_kernel::{
     ProviderSessionControlRequest,
 };
 use sdkwork_agent_provider_spi::{
-    NegotiatedCapability, SdkBackendKind, SdkBackendRuntime, SdkCapabilityNegotiation,
-    SdkDriverHealth, SdkRuntimeBackedSessionControlProvider, SdkRuntimeOperation,
-    SdkRuntimeOperationKind, SdkRuntimeRequest, SdkRuntimeResponse, SdkRuntimeRouter,
-    SDK_CAPABILITY_SESSION_CONTROL,
+    CapabilityExecutionScope, NegotiatedCapability, SdkBackendKind, SdkBackendRuntime,
+    SdkCapabilityNegotiation, SdkDriverHealth, SdkRuntimeBackedSessionControlProvider,
+    SdkRuntimeOperation, SdkRuntimeOperationKind, SdkRuntimeRequest, SdkRuntimeResponse,
+    SdkRuntimeRouter, SDK_CAPABILITY_SESSION_CONTROL,
 };
 use std::sync::{Arc, Mutex};
 
@@ -60,6 +60,7 @@ fn runtime(
             backend_kind: SdkBackendKind::TypeScriptNode,
             driver_id: "driver.opencode.session.control.ts".to_string(),
             runtime_operations: operations,
+            execution_scope: CapabilityExecutionScope::TransportRuntime,
         }],
         missing_required: Vec::new(),
         degraded_optional: Vec::new(),

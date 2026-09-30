@@ -252,6 +252,7 @@ fn runtime_router_rejects_operations_not_declared_by_selected_backend() {
             backend_kind: SdkBackendKind::RustNative,
             driver_id: "driver.codex.session.lifecycle.rust".to_string(),
             runtime_operations: vec![SdkRuntimeOperationKind::Ping],
+                execution_scope: sdkwork_agent_provider_spi::CapabilityExecutionScope::TransportRuntime,
         }],
         missing_required: Vec::new(),
         degraded_optional: Vec::new(),

@@ -1119,6 +1119,18 @@ fn validate_selected_operation(
     request: &SdkRuntimeRequest,
 ) -> Result<(), SdkRuntimeError> {
     let operation = request.operation.kind();
+    // Execution scope is enforced here, not merely declared: a provider-local
+    // capability's operations are served from provider-local state and are
+    // not routable through a transport worker. The one exception is the
+    // health probe, which every routed backend exposes.
+    if selected.execution_scope == crate::binding::CapabilityExecutionScope::ProviderLocal
+        && operation != SdkRuntimeOperationKind::Ping
+    {
+        return Err(SdkRuntimeError::operation_not_supported(
+            &request.capability_id,
+            operation,
+        ));
+    }
     if selected.runtime_operations.contains(&operation) {
         return Ok(());
     }

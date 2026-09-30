@@ -1,4 +1,5 @@
 use crate::backend::SdkBackendKind;
+use crate::binding::CapabilityExecutionScope;
 use crate::runtime::SdkRuntimeOperationKind;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,11 @@ pub struct NegotiatedCapability {
     pub backend_kind: SdkBackendKind,
     pub driver_id: String,
     pub runtime_operations: Vec<SdkRuntimeOperationKind>,
+    /// Declared execution scope carried from the capability binding so
+    /// dispatch can enforce it (provider-local capabilities are not routable
+    /// through transport workers beyond health probes).
+    #[serde(default)]
+    pub execution_scope: CapabilityExecutionScope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
