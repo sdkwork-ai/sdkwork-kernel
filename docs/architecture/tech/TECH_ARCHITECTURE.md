@@ -270,12 +270,14 @@ Provider binding negotiation, bootstrap flow, and transport priority are documen
 
 Provider binding manifests define both selection and execution. Capabilities
 declare `execution_scope`, and selected backends declare `runtime_operations`.
+Both are enforced before worker invocation: the requested operation must be
+absent from no allowlist, and a `provider_local` capability is not routable
+through a transport worker at all (its operations are served from
+provider-local state; only the health probe crosses the routing boundary).
 Provider-local lifecycle capabilities such as `sdk.session.lifecycle` and
 `sdk.session.history` use provider-core/local SPI state and expose only
 `runtime_operations: ["ping"]` through runtime routing. Transport-backed model,
-stream, tool, and skill operations require `execution_scope: transport_runtime`
-and are rejected before worker invocation when the requested operation is absent
-from the selected backend allowlist.
+stream, tool, and skill operations require `execution_scope: transport_runtime`.
 
 ### Agent kernel SPI provider families
 
@@ -574,8 +576,8 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
   session-plus-event transactions update only mutable fields and cannot replace
   those values from a stale in-memory row. Updating an unknown session returns
   not-found instead of silently inserting it.
-- **Rate limiter**: O(1) LRU eviction via insertion-order queue instead of
-  O(n) scan.
+- **Rate limiter**: O(1) eviction via insertion-order queue (FIFO, not
+  access-ordered LRU) instead of an O(n) scan.
 - **Idempotency**: Every production profile (standalone and cloud) requires a
   distributed store scoped by verified identity, route, query, key, and
   server-computed request fingerprint; startup fails closed when
@@ -598,14 +600,26 @@ Topology detail: [TECH-topology-standard.md](TECH-topology-standard.md).
   poll/broadcast overlap cannot replay the same persisted event. Clients use
   persisted `event_id` values, not connection-local sequence numbers, for
   reconnection.
+- **Cross-pod event fan-out**: When `SDKWORK_EVENT_FANOUT_REDIS_URL` (or
+  `SDKWORK_REDIS_URL`) is configured, every persisted event also emits a
+  payload-free wakeup over Redis pub/sub, and each SSE connection waits on the
+  wakeup alongside its poll timer — a remote wakeup triggers an immediate
+  durable poll instead of waiting out the 1–30 s backoff. PostgreSQL stays the
+  single source of truth: a lost or duplicated wakeup can only change latency,
+  never delivery, and a dropped Redis connection degrades to the plain poll
+  schedule. Cluster coordination (`SDKWORK_COORDINATION_MODE=cluster`)
+  requires the fan-out to be configured and connected; standalone deployments
+  default to `single` and run without it.
 - **SSE connection cap**: `AtomicU32` counter enforces a per-server
   maximum of 256 concurrent streams with RAII decrement via
   `CountedStream`. Event-stream admission occurs before session lookup,
   broadcast subscription, or persistence replay, so saturated requests cannot
   consume database or replay-memory capacity. Durable per-connection polling
   starts at one second, exponentially backs off to thirty seconds while idle,
-  and resets after activity or broadcast lag. It remains a bounded recovery path; a shared cross-pod notification transport
-  and target-cluster fan-out evidence remain commercial scale gates.
+  and resets after activity, broadcast lag, or a cross-pod fan-out wakeup. The
+  durable poll remains the correctness backstop; target-cluster fan-out
+  evidence (multi-replica soak under failover) remains a commercial scale
+  gate.
 - **Model stream provider state**: In-memory stream provider slots are released
   by `finalize_stream`, so completed streams do not keep occupying
   `max_concurrent` capacity in long-running runtimes.
