@@ -170,7 +170,7 @@ test('cloud compose requires external managed dependencies and dedicated secrets
     'utf8',
   );
   assert.match(compose, /env_file:/);
-  assert.match(compose, /configs\/topology\/cloud\.production\.env/);
+  assert.match(compose, /etc\/topology\/cloud\.production\.env/);
   assert.match(compose, /SDKWORK_AGENT_SERVER_IMAGE:\?set an immutable agent-server image reference/);
   assert.match(compose, /SDKWORK_DATABASE_URL:\?set the managed workspace PostgreSQL URL/);
   assert.match(compose, /SDKWORK_RATE_LIMIT_REDIS_URL:\?set the managed Redis rate-limit URL/);
@@ -332,17 +332,18 @@ test('app manifest requires SBOM and checksum evidence', () => {
   assert.equal(manifest.security?.sbomRequired, true);
   assert.equal(manifest.security?.checksumRequired, true);
   assert.equal(manifest.metadata?.topologySpec, 'specs/topology.spec.json');
-  assert.equal(
-    manifest.environments?.development?.topologyProfileId,
-    'standalone.development',
+  // Topology profile and surface mappings live in the topology spec
+  // (single source of truth) referenced by the app manifest metadata.
+  const topology = JSON.parse(
+    fs.readFileSync(path.join(root, manifest.metadata?.topologySpec ?? ''), 'utf8'),
   );
-  assert.equal(
-    manifest.environments?.production?.topologyProfileId,
-    'cloud.production',
-  );
-  assert.equal(
-    manifest.environments?.production?.accessUrlEnv,
-    'SDKWORK_KERNEL_APPLICATION_PUBLIC_HTTP_URL',
+  assert.equal(topology.defaults?.developmentProfileId, 'standalone.development');
+  assert.equal(topology.defaults?.productionProfileId, 'cloud.production');
+  const publicSurface = JSON.stringify(topology.surfaces ?? {});
+  assert.match(
+    publicSurface,
+    /SDKWORK_KERNEL_APPLICATION_PUBLIC_HTTP_URL/,
+    'topology surfaces must declare the public HTTP URL env',
   );
 });
 
