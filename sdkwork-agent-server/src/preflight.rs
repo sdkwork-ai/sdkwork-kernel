@@ -88,6 +88,28 @@ pub fn validate(config: &ServerConfig) -> PreflightResult {
         });
     }
 
+    // Signature verification alone accepts any token signed by the trusted
+    // key; pinning issuer and audience in production keeps cross-environment
+    // or cross-audience token replay out of the trust boundary.
+    if config.ingress_auth_mode.eq_ignore_ascii_case("jwt") && config.is_production_kernel_profile()
+    {
+        let issuer_pinned = config
+            .ingress_jwt_issuer
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        let audience_pinned = config
+            .ingress_jwt_audience
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+        if !issuer_pinned || !audience_pinned {
+            checks.push(PreflightCheck {
+                name: "ingress_jwt_issuer_audience_pinned".to_string(),
+                status: PreflightStatus::Failed,
+                message: "Production JWT ingress must pin SDKWORK_KERNEL_INGRESS_JWT_ISSUER and SDKWORK_KERNEL_INGRESS_JWT_AUDIENCE".to_string(),
+            });
+        }
+    }
+
     if config.ingress_identity_mode() == crate::ingress_identity::IngressIdentityMode::Bound
         && !config.has_bound_identity()
     {
@@ -212,6 +234,15 @@ pub fn validate(config: &ServerConfig) -> PreflightResult {
             name: "rate_limit_redis".to_string(),
             status: PreflightStatus::Failed,
             message: "Production cloud/server deployments require SDKWORK_RATE_LIMIT_REDIS_URL (or SDKWORK_REDIS_URL) for distributed rate limiting"
+                .to_string(),
+        });
+    }
+
+    if config.is_cluster_coordination() && config.effective_event_fanout_redis_url().is_none() {
+        checks.push(PreflightCheck {
+            name: "event_fanout_redis".to_string(),
+            status: PreflightStatus::Failed,
+            message: "Cluster coordination requires SDKWORK_EVENT_FANOUT_REDIS_URL (or SDKWORK_REDIS_URL) for the cross-pod SSE event wakeup"
                 .to_string(),
         });
     }

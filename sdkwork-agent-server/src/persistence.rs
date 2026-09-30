@@ -551,6 +551,7 @@ pub struct PersistenceState {
     maintenance_db: MaintenanceDb,
     execution_db: ExecutionDb,
     event_bus: SessionEventBus,
+    event_fanout: crate::event_fanout::EventFanout,
     backend: PersistenceBackend,
     admission: Arc<PersistenceAdmission>,
 }
@@ -736,6 +737,7 @@ impl PersistenceState {
             maintenance_db: MaintenanceDb::Sqlite(db),
             execution_db: ExecutionDb::Sqlite(execution_db),
             event_bus,
+            event_fanout: crate::event_fanout::EventFanout::disabled(),
             backend: PersistenceBackend::Sqlite,
             admission: Arc::new(PersistenceAdmission::from_config(&ServerConfig::default())),
         }
@@ -752,6 +754,7 @@ impl PersistenceState {
             maintenance_db: MaintenanceDb::Postgres(shared_db.clone()),
             execution_db: ExecutionDb::Postgres(shared_db),
             event_bus,
+            event_fanout: crate::event_fanout::EventFanout::disabled(),
             backend: PersistenceBackend::Postgres,
             admission: Arc::new(PersistenceAdmission::from_config(&ServerConfig::default())),
         }
@@ -760,6 +763,23 @@ impl PersistenceState {
     fn with_admission_config(mut self, config: &ServerConfig) -> Self {
         self.admission = Arc::new(PersistenceAdmission::from_config(config));
         self
+    }
+
+    /// Wire a cross-pod event fan-out transport (disabled by default).
+    pub fn with_event_fanout(mut self, event_fanout: crate::event_fanout::EventFanout) -> Self {
+        self.event_fanout = event_fanout;
+        self
+    }
+
+    /// Access the wired fan-out so SSE subscribers can await remote wakeups.
+    pub fn event_fanout(&self) -> &crate::event_fanout::EventFanout {
+        &self.event_fanout
+    }
+
+    /// Local broadcast plus best-effort remote wakeup for the durable store.
+    fn publish_event(&self, event: &EventRow) {
+        self.event_bus.publish(event.clone());
+        self.event_fanout.notify();
     }
 
     pub fn attach_metrics(&self, metrics: &Arc<crate::metrics::MetricsRegistry>) {
@@ -912,7 +932,7 @@ impl PersistenceState {
         self.execution_db
             .create_task_execution(task, run, step, event)
             .map_err(|error| format!("failed to create task execution: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -968,7 +988,7 @@ impl PersistenceState {
         self.execution_db
             .complete_claimed_run(claim, result_json, finished_at, event)
             .map_err(|error| format!("failed to complete claimed run: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -981,7 +1001,7 @@ impl PersistenceState {
         self.execution_db
             .start_claimed_run(claim, started_at, event)
             .map_err(|error| format!("failed to start claimed run: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -996,7 +1016,7 @@ impl PersistenceState {
         self.execution_db
             .complete_claimed_run_with_messages(claim, messages, result_json, finished_at, event)
             .map_err(|error| format!("failed to complete claimed run with messages: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -1019,7 +1039,7 @@ impl PersistenceState {
                 event,
             )
             .map_err(|error| format!("failed to fail claimed run: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -1042,7 +1062,7 @@ impl PersistenceState {
                 event,
             )
             .map_err(|error| format!("failed to schedule run retry: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -1057,7 +1077,7 @@ impl PersistenceState {
             .request_task_cancellation(task_id, requested_at, event)
             .map_err(|error| format!("failed to request task cancellation: {error}"))?;
         if result.1 {
-            self.event_bus.publish(event.clone());
+            self.publish_event(&event);
         }
         Ok(result)
     }
@@ -1073,7 +1093,7 @@ impl PersistenceState {
             .execution_db
             .retry_task_execution(task_id, run, step, event)
             .map_err(|error| format!("failed to retry task execution: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(task)
     }
 
@@ -1088,7 +1108,7 @@ impl PersistenceState {
             .execution_db
             .control_run(run_id, action, changed_at, event)
             .map_err(|error| format!("failed to control run: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(run)
     }
 
@@ -1104,7 +1124,7 @@ impl PersistenceState {
         self.execution_db
             .create_permission_execution(permission, task, run, step, operation, event)
             .map_err(|error| format!("failed to create permission execution: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -1128,7 +1148,7 @@ impl PersistenceState {
             .execution_db
             .decide_permission_operation(permission_request_id, decision, decided_at, event)
             .map_err(|error| format!("failed to decide permission operation: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(operation)
     }
 
@@ -1173,7 +1193,7 @@ impl PersistenceState {
             .map_err(|error| format!("failed to expire permission operations: {error}"))?;
         let count = events.len();
         for event in events {
-            self.event_bus.publish(event);
+            self.publish_event(&event);
         }
         Ok(count)
     }
@@ -1188,7 +1208,7 @@ impl PersistenceState {
         self.execution_db
             .complete_permission_operation(claim, result_json, finished_at, event)
             .map_err(|error| format!("failed to complete permission operation: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 
@@ -1211,7 +1231,7 @@ impl PersistenceState {
                 event,
             )
             .map_err(|error| format!("failed to fail permission operation: {error}"))?;
-        self.event_bus.publish(event.clone());
+        self.publish_event(&event);
         Ok(())
     }
 

@@ -80,6 +80,13 @@ pub struct ServerConfig {
     /// Dedicated Redis URL for distributed HTTP idempotency records.
     /// This credential is intentionally independent from rate-limit Redis.
     pub idempotency_redis_url: Option<String>,
+    /// Dedicated Redis URL for the cross-pod SSE event-wakeup fan-out.
+    /// Falls back to `SDKWORK_REDIS_URL` when unset; absent entirely, SSE
+    /// streams rely on their durable poll schedule alone.
+    pub event_fanout_redis_url: Option<String>,
+    /// Runtime coordination mode: `single` (default) or `cluster`. Cluster
+    /// mode requires the cross-pod event fan-out to be configured.
+    pub coordination_mode: String,
     /// Completed idempotency response retention in seconds.
     pub idempotency_ttl_secs: u64,
     /// Maximum JSON response body retained for idempotent replay.
@@ -168,6 +175,8 @@ impl Default for ServerConfig {
             rate_limit_burst: 200,
             rate_limit_redis_url: None,
             idempotency_redis_url: None,
+            event_fanout_redis_url: None,
+            coordination_mode: "single".to_string(),
             idempotency_ttl_secs: 24 * 60 * 60,
             idempotency_max_cached_response_bytes: 512 * 1024,
             idempotency_require_key: false,
@@ -365,6 +374,26 @@ impl ServerConfig {
             let trimmed = redis_url.trim().to_string();
             if !trimmed.is_empty() {
                 config.idempotency_redis_url = Some(trimmed);
+            }
+        }
+        if let Ok(redis_url) = std::env::var("SDKWORK_EVENT_FANOUT_REDIS_URL")
+            .or_else(|_| std::env::var("SDKWORK_REDIS_URL"))
+        {
+            let trimmed = redis_url.trim().to_string();
+            if !trimmed.is_empty() {
+                config.event_fanout_redis_url = Some(trimmed);
+            }
+        }
+        if let Ok(mode) = std::env::var("SDKWORK_COORDINATION_MODE") {
+            let trimmed = mode.trim().to_ascii_lowercase();
+            match trimmed.as_str() {
+                "" => {}
+                "single" | "cluster" => config.coordination_mode = trimmed,
+                other => {
+                    return Err(anyhow::anyhow!(
+                        "SDKWORK_COORDINATION_MODE must be 'single' or 'cluster', got '{other}'"
+                    ));
+                }
             }
         }
         if let Ok(ttl_secs) = std::env::var("SDKWORK_IDEMPOTENCY_TTL_SECS") {
@@ -628,6 +657,21 @@ impl ServerConfig {
         // production deployment caching model-output-sized responses in
         // process could accumulate gigabytes. Startup fails closed instead.
         self.is_production_kernel_profile()
+    }
+
+    /// Whether the runtime participates in cluster coordination. Cluster mode
+    /// requires the cross-pod event fan-out (preflight enforces it) so SSE
+    /// subscribers see events persisted on other replicas without waiting
+    /// out the durable poll backoff.
+    pub fn is_cluster_coordination(&self) -> bool {
+        self.coordination_mode.eq_ignore_ascii_case("cluster")
+    }
+
+    /// Redis URL for the cross-pod event fan-out, if configured.
+    pub fn effective_event_fanout_redis_url(&self) -> Option<&str> {
+        self.event_fanout_redis_url
+            .as_deref()
+            .filter(|url| !url.is_empty())
     }
 
     pub fn ingress_auth_secured(&self) -> bool {

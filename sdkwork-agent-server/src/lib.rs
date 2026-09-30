@@ -7,6 +7,7 @@ pub mod approval_payload_vault;
 pub mod backend_health_worker;
 pub mod config;
 pub mod event_bus;
+pub mod event_fanout;
 pub mod health;
 pub mod http_response;
 pub mod http_surface;

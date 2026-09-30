@@ -35,7 +35,29 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let health_state = Arc::new(health::HealthState::new());
-    let persistence = Arc::new(PersistenceState::open_from_config_async(config.as_ref()).await?);
+    let event_fanout = match config.effective_event_fanout_redis_url() {
+        Some(redis_url) => match sdkwork_agent_server::event_fanout::EventFanout::connect(redis_url).await {
+            Ok(fanout) => {
+                info!("Cross-pod event fan-out connected (coordination mode: {})", config.coordination_mode);
+                fanout
+            }
+            Err(error) => {
+                if config.is_cluster_coordination() {
+                    return Err(anyhow::anyhow!(
+                        "cluster coordination requires a working event fan-out Redis connection: {error}"
+                    ));
+                }
+                tracing::warn!(error = %error, "event fanout connect failed; SSE falls back to durable polling");
+                sdkwork_agent_server::event_fanout::EventFanout::disabled()
+            }
+        },
+        None => sdkwork_agent_server::event_fanout::EventFanout::disabled(),
+    };
+    let persistence = Arc::new(
+        PersistenceState::open_from_config_async(config.as_ref())
+            .await?
+            .with_event_fanout(event_fanout),
+    );
     let runtime_state = Arc::new(
         internal_runtime::InternalRuntimeApiState::new_async(persistence.clone(), config.clone())
             .await

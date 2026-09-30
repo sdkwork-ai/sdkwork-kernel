@@ -1543,6 +1543,11 @@ fn live_event_stream(
         let poll_sleep = tokio::time::sleep(poll_delay);
         tokio::pin!(poll_sleep);
 
+        // Cross-pod wakeups: a Redis fan-out wakeup triggers an immediate
+        // durable poll instead of waiting out the poll backoff. The durable
+        // poll stays the correctness backstop; a wakeup only changes latency.
+        let mut fanout_wakeup = persistence.event_fanout().subscribe_wakeup();
+
         loop {
             tokio::select! {
                 _ = &mut poll_sleep => {
@@ -1599,8 +1604,7 @@ fn live_event_stream(
                         Some(receiver) => receiver.recv().await,
                         None => std::future::pending().await,
                     }
-                }, if receiver_open => {
-                    match received {
+                }, if receiver_open => {                    match received {
                         Ok(row) if row.session_id.as_deref() == Some(session_id.as_str()) => {
                             if !remember_event_id(
                                 &mut seen_event_ids,
@@ -1630,6 +1634,30 @@ fn live_event_stream(
                         Err(broadcast::error::RecvError::Closed) => {
                             receiver_open = false;
                             receiver = None;
+                        }
+                    }
+                }
+                wakeup = async {
+                    match fanout_wakeup.as_mut() {
+                        Some(wakeup) => wakeup.recv().await,
+                        None => std::future::pending().await,
+                    }
+                }, if fanout_wakeup.is_some() => {
+                    match wakeup {
+                        Ok(()) => {
+                            // Remote event persisted on another pod: poll the
+                            // durable store immediately instead of waiting out
+                            // the backoff.
+                            poll_sleep.as_mut().reset(tokio::time::Instant::now());
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            // Missed wakeups only cost latency; poll now.
+                            poll_sleep.as_mut().reset(tokio::time::Instant::now());
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            // Remote subscription ended: fall back to the
+                            // plain poll schedule.
+                            fanout_wakeup = None;
                         }
                     }
                 }
