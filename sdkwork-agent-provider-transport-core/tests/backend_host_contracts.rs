@@ -1,7 +1,7 @@
 use sdkwork_agent_provider_spi::{
-    NegotiatedCapability, SdkBackendKind, SdkBackendRuntime, SdkCapabilityNegotiation,
-    SdkDriverHealth, SdkRuntimeError, SdkRuntimeOperationKind, SdkRuntimeRequest,
-    SdkRuntimeResponse,
+    CapabilityExecutionScope, NegotiatedCapability, SdkBackendKind, SdkBackendRuntime,
+    SdkCapabilityNegotiation, SdkDriverHealth, SdkRuntimeError, SdkRuntimeOperationKind,
+    SdkRuntimeRequest, SdkRuntimeResponse,
 };
 use sdkwork_agent_provider_transport_core::{
     BackendHostRegistry, HttpOpenApiBackendHost, ProviderTransportBootstrap, RustNativeBackendHost,
@@ -59,6 +59,7 @@ fn negotiated_typescript_model_chat() -> SdkCapabilityNegotiation {
             backend_kind: SdkBackendKind::TypeScriptNode,
             driver_id: "driver.test.model.chat.ts".to_string(),
             runtime_operations: vec![SdkRuntimeOperationKind::ModelChat],
+            execution_scope: CapabilityExecutionScope::TransportRuntime,
         }],
         missing_required: Vec::new(),
         degraded_optional: Vec::new(),

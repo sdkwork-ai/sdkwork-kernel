@@ -1166,7 +1166,7 @@ impl ModelExecutionService {
             model_descriptor,
             preprocessor: preprocessor
                 .as_ref()
-                .map(|value| value as _),
+                .map(|value| -> &dyn InputModalityPreprocessor { value }),
         };
         validate_structured_model_input_with_options(&effective_messages, &options).map(Some)
     }
