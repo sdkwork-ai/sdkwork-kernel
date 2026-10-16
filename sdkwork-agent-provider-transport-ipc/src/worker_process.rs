@@ -2,6 +2,12 @@ use crate::transport::{SharedJsonRpcTransport, StdioJsonRpcSession, TransportErr
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
+// `process_group` is provided by the Unix-only CommandExt trait. Without this
+// import the crate fails to build on Linux (E0599) while Windows compiles the
+// guarded block out, so the defect only surfaces in Linux packaging.
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 /// Upper bound for worker stderr retained for crash diagnostics. The reader
 /// keeps draining past this bound (discarding excess) so a chatty child can
 /// never fill the pipe and deadlock.
