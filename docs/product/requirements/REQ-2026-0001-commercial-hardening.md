@@ -25,7 +25,7 @@ users:
   - Platform engineer
   - IM PC and BirdCoder product teams
 acceptance_criteria:
-  - Release pipeline builds target-scoped linux-x64 tar.gz and windows-x64 zip server packages, and validates package-scoped checksum/SBOM evidence from sdkwork.app.config.json
+  - Release pipeline builds target-scoped linux-x64 tar.gz and windows-x64 zip server packages, and validates package-scoped checksum/SBOM evidence from agent.app.config.json
   - Release validation rejects legacy crate-scoped `sdkwork-agent-server` evidence that is not tied to manifest package ids
   - Default merge verification remains credential-free, while `pnpm verify:commercial` runs `scripts/verify-kernel-audit-remediation.mjs --commercial-release`
   - Commercial release verification fails closed when `SDKWORK_DATABASE_URL` is missing, staging SDK credentials are not available, or `SDKWORK_KERNEL_STAGING_HERMES_GATEWAY=1` is not set

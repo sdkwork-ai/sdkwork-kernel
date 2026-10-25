@@ -257,6 +257,6 @@ pnpm check
 ## 8. References
 
 - **SDKWORK Standards**: See `AGENTS.md` for the canonical spec index
-- **Application Identity**: See `sdkwork.app.config.json`
+- **Application Identity**: See `agent.app.config.json`
 - **Local Specs**: See `specs/README.md` and `specs/AGENT_KERNEL_SPEC.md`
 - **Documentation Canon**: See `docs/README.md`, `docs/product/prd/PRD.md`, `docs/architecture/tech/TECH_ARCHITECTURE.md`

@@ -32,7 +32,7 @@ Specs: QUALITY_GATE_SPEC.md, ARCHITECTURE_DECISION_SPEC.md, SDKWORK_WORKSPACE_SP
 
 - Task source: user requested continued alignment to the sibling `../sdkwork-specs` standards.
 - Repository root: `<workspace-root>/sdkwork-kernel`.
-- Application identity: no root `sdkwork.app.config.json`; this is a kernel standards repository,
+- Application identity: no root `agent.app.config.json`; this is a kernel standards repository,
   not an application root.
 - Relevant specs: `SOUL.md`, `SDKWORK_WORKSPACE_SPEC.md`, `COMPONENT_SPEC.md`, `SDK_SPEC.md`,
   `SDK_WORKSPACE_GENERATION_SPEC.md`, `ARCHITECTURE_DECISION_SPEC.md`, `QUALITY_GATE_SPEC.md`,
@@ -496,7 +496,7 @@ Decision and evidence:
 Out of kernel scope (documented, not implemented in this repository):
 
 - `sdkwork-discovery` — no first-party gRPC/RPC services in kernel
-- `sdkwork.app.config.json` — kernel is a standards repository, not an application root
+- `agent.app.config.json` — kernel is a standards repository, not an application root
 
 Phase 5 utils:
 

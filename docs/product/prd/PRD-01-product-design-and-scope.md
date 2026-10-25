@@ -76,7 +76,7 @@ does not implement a second Sandbox lifecycle or Workspace registry.
 | Code kernel | `sdkwork-code-kernel` |
 | Platform plugins | Drive, knowledgebase kernel plugins |
 | Sandbox lifecycle adaptation | Agents ID validation/mapping, `SandboxSessionLifecyclePort` invocation and opaque runtime-binding projection |
-| Release | `sdkwork.app.config.json`, topology profiles, workflow manifest |
+| Release | `agent.app.config.json`, topology profiles, workflow manifest |
 
 ## 5. Out-of-Scope (Sibling Repositories)
 

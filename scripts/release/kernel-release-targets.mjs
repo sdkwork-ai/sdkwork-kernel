@@ -14,7 +14,7 @@ export function readJsonFile(filePath) {
 }
 
 export function readReleaseContext(kernelRoot, env = process.env) {
-  const manifest = readJsonFile(path.join(kernelRoot, 'sdkwork.app.config.json'));
+  const manifest = readJsonFile(path.join(kernelRoot, 'agent.app.config.json'));
   const workflow = readJsonFile(path.join(kernelRoot, 'sdkwork.workflow.json'));
   const version =
     env.SDKWORK_PACKAGE_VERSION?.trim() ||
@@ -122,16 +122,16 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
   const workflowTargets = workflow.targets ?? [];
 
   if (packages.length === 0) {
-    errors.push('sdkwork.app.config.json artifacts.installConfig.packages must declare at least one enabled package');
+    errors.push('agent.app.config.json artifacts.installConfig.packages must declare at least one enabled package');
   }
 
   for (const pkg of packages) {
     if (!pkg.id) {
-      errors.push('sdkwork.app.config.json contains an enabled package without id');
+      errors.push('agent.app.config.json contains an enabled package without id');
       continue;
     }
     if (packageById.has(pkg.id)) {
-      errors.push(`duplicate sdkwork.app.config.json package id: ${pkg.id}`);
+      errors.push(`duplicate agent.app.config.json package id: ${pkg.id}`);
       continue;
     }
     packageById.set(pkg.id, pkg);
@@ -156,7 +156,7 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
 
   const releaseNote = releaseNoteForVersion(manifest, version);
   if (!releaseNote) {
-    errors.push(`sdkwork.app.config.json release.notes must include a current note for ${version}`);
+    errors.push(`agent.app.config.json release.notes must include a current note for ${version}`);
   } else {
     const notePackageIds = new Set(releaseNote.packageIds ?? []);
     for (const packageId of packageById.keys()) {
@@ -195,7 +195,7 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
 
   for (const packageId of targetByPackageId.keys()) {
     if (!packageById.has(packageId)) {
-      errors.push(`sdkwork.workflow.json target ${packageId} must exist in sdkwork.app.config.json install packages`);
+      errors.push(`sdkwork.workflow.json target ${packageId} must exist in agent.app.config.json install packages`);
     }
   }
 
@@ -216,7 +216,7 @@ export function resolveLifecycleTarget({ kernelRoot, env = process.env, commandN
   const packageInfo = context.packageById.get(packageId);
   const target = context.targetByPackageId.get(packageId);
   if (packageId && !packageInfo) {
-    errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in sdkwork.app.config.json install packages`);
+    errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in agent.app.config.json install packages`);
   }
   if (packageId && !target) {
     errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in sdkwork.workflow.json targets`);

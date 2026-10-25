@@ -401,7 +401,7 @@ Governing standard: [OBSERVABILITY_SPEC.md](../../../sdkwork-specs/OBSERVABILITY
 
 ## 7. Deployment And Runtime Topology
 
-Application identity: `sdkwork.app.config.json` (`app.key: sdkwork-kernel`).
+Application identity: `agent.app.config.json` (`app.key: sdkwork-kernel`).
 
 | Profile | Use case | Key env |
 | --- | --- | --- |

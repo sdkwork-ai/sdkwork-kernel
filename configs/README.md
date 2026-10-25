@@ -12,7 +12,7 @@ credentials are forbidden.
 Contents:
 
 - Kernel workspace reference configuration aligned with
-  `sdkwork.app.config.json` and `specs/topology.spec.json`.
+  `agent.app.config.json` and `specs/topology.spec.json`.
 
 Related authority:
 

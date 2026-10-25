@@ -355,26 +355,26 @@ export function validatePlatformIntegration({ kernelRoot, errors, ensureFile, re
     );
   }
 
-  const appManifestPath = path.join(kernelRoot, 'sdkwork.app.config.json');
+  const appManifestPath = path.join(kernelRoot, 'agent.app.config.json');
   if (fs.existsSync(appManifestPath)) {
     const appManifest = JSON.parse(fs.readFileSync(appManifestPath, 'utf8'));
     const topologySpec = appManifest.metadata?.topologySpec;
     if (topologySpec !== 'specs/topology.spec.json') {
-      errors.push('sdkwork.app.config.json metadata.topologySpec must reference specs/topology.spec.json');
+      errors.push('agent.app.config.json metadata.topologySpec must reference specs/topology.spec.json');
     }
     for (const [envName, envConfig] of Object.entries(appManifest.environments ?? {})) {
       if (!envConfig?.topologyProfileId || typeof envConfig.topologyProfileId !== 'string') {
-        errors.push(`sdkwork.app.config.json environments.${envName} must declare topologyProfileId`);
+        errors.push(`agent.app.config.json environments.${envName} must declare topologyProfileId`);
       }
       if (envConfig?.accessUrl) {
-        errors.push(`sdkwork.app.config.json environments.${envName} must use accessUrlEnv instead of hardcoded accessUrl`);
+        errors.push(`agent.app.config.json environments.${envName} must use accessUrlEnv instead of hardcoded accessUrl`);
       }
       if (
         envConfig?.accessUrlEnv &&
         envConfig.accessUrlEnv !== 'SDKWORK_KERNEL_APPLICATION_PUBLIC_HTTP_URL'
       ) {
         errors.push(
-          `sdkwork.app.config.json environments.${envName}.accessUrlEnv must be SDKWORK_KERNEL_APPLICATION_PUBLIC_HTTP_URL`,
+          `agent.app.config.json environments.${envName}.accessUrlEnv must be SDKWORK_KERNEL_APPLICATION_PUBLIC_HTTP_URL`,
         );
       }
     }

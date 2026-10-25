@@ -34,7 +34,7 @@ Platform alignment targets for the kernel:
 **Integrated:**
 
 - `sdkwork-utils-rust` — pagination, validation, and list-query helpers in server handlers.
-- `sdkwork.app.config.json` — topology/workflow packaging identity (`app.key: sdkwork-kernel`).
+- `agent.app.config.json` — topology/workflow packaging identity (`app.key: sdkwork-kernel`).
 
 ## Decision
 

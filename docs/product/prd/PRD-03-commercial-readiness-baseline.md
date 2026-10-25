@@ -14,7 +14,7 @@ Authoritative source for phases, readiness matrix, success metrics, and deployme
 | Field | Value |
 | --- | --- |
 | Application key | `sdkwork-kernel` |
-| Current version | `0.1.0` (per `sdkwork.app.config.json`) |
+| Current version | `0.1.0` (per `agent.app.config.json`) |
 | Publish status | BETA |
 | Platforms | API, CLI |
 | Deployment profiles | `standalone`, `cloud` |

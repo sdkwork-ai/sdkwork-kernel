@@ -47,9 +47,9 @@ function writeReleaseFixture({ workspaceRoot, packageId, binaryRelativePath, leg
 function writeReleaseWorkspaceFixture(workspaceRoot) {
   const packageId = 'windows-x64-cloud-server-zip';
   const binaryRelativePath = `dist/release/${packageId}/sdkwork-kernel-${packageId}-0.1.0.zip`;
-  writeJson(path.join(workspaceRoot, 'sdkwork.app.config.json'), {
+  writeJson(path.join(workspaceRoot, 'agent.app.config.json'), {
     schemaVersion: 3,
-    kind: 'sdkwork.app',
+    kind: 'agent.app',
     app: { key: 'sdkwork-kernel' },
     runtime: {
       supportedDeploymentProfiles: ['cloud'],
@@ -328,7 +328,7 @@ test('kubernetes data dependency manifests are not presented as production HA da
 });
 
 test('app manifest requires SBOM and checksum evidence', () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'sdkwork.app.config.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'agent.app.config.json'), 'utf8'));
   assert.equal(manifest.security?.sbomRequired, true);
   assert.equal(manifest.security?.checksumRequired, true);
   assert.equal(manifest.metadata?.topologySpec, 'specs/topology.spec.json');

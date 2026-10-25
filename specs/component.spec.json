@@ -13,7 +13,7 @@
     "languages": ["rust", "javascript"],
     "generated": false,
     "manifests": [
-      "sdkwork.app.config.json",
+      "agent.app.config.json",
       "Cargo.toml",
       "package.json"
     ]
