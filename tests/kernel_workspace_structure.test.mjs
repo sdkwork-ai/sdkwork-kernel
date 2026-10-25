@@ -481,7 +481,7 @@ test('sdkwork-utils integration records workspace dependency, validator, and sta
   const workspaceCargo = fs.readFileSync(path.join(root, 'Cargo.toml'), 'utf8');
   assert.match(workspaceCargo, /sdkwork-utils-rust =/, 'workspace Cargo.toml should declare sdkwork-utils-rust');
 
-  const workflow = JSON.parse(fs.readFileSync(path.join(root, 'sdkwork.workflow.json'), 'utf8'));
+  const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agent.workflow.json'), 'utf8'));
   const dependencyIds = new Set((workflow.dependencies || []).map((entry) => entry.id));
   assert.equal(dependencyIds.has('sdkwork-utils'), true, 'workflow should declare sdkwork-utils dependency');
 
@@ -497,11 +497,11 @@ test('sdkwork-utils integration records workspace dependency, validator, and sta
   assert.ok(adr.includes('sdkwork-utils'), 'platform ADR should document sdkwork-utils adoption');
 });
 
-test('platform packaging records sdkwork.workflow.json and package workflow entrypoint', () => {
-  const workflowPath = path.join(root, 'sdkwork.workflow.json');
+test('platform packaging records agent.workflow.json and package workflow entrypoint', () => {
+  const workflowPath = path.join(root, 'agent.workflow.json');
   const packageWorkflowPath = path.join(root, '.github', 'workflows', 'package.yml');
 
-  assert.equal(fs.existsSync(workflowPath), true, 'sdkwork.workflow.json should exist');
+  assert.equal(fs.existsSync(workflowPath), true, 'agent.workflow.json should exist');
   assert.equal(fs.existsSync(packageWorkflowPath), true, 'package workflow should exist');
 
   const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
@@ -517,7 +517,7 @@ test('platform packaging records sdkwork.workflow.json and package workflow entr
   assert.match(
     packageWorkflow,
     /config_path: sdkwork\.workflow\.json/,
-    'package workflow should pass sdkwork.workflow.json'
+    'package workflow should pass agent.workflow.json'
   );
 });
 

@@ -78,3 +78,13 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# ---- auto-audited: local artifacts that must never be committed ----
+*.key
+*.p12
+*.pfx
+*.keystore
+tmp/
+temp/
+*.temp
+.next/

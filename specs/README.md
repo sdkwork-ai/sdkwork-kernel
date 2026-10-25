@@ -20,7 +20,7 @@ Runtime connectivity profiles for local dev and deployment live in
 | `sdkwork-discovery` | **Deferred** | Kernel has no first-party gRPC/RPC services. Adopt when an RPC surface ships per `RPC_SPEC.md` and `RUST_RPC_SPEC.md`. |
 | PNPM script surface | **Integrated** | Root `package.json` exposes `dev`, `build`, `test`, `check`, `verify`, `clean` via `scripts/sdkwork-command.mjs`. Verified by `tools/validators/kernel-standards/platform-pnpm-scripts.mjs`. |
 
-Sibling checkout and release refs are declared in `sdkwork.workflow.json`
+Sibling checkout and release refs are declared in `agent.workflow.json`
 (`sdkwork-web-framework`, `sdkwork-database`, `sdkwork-utils`).
 
 ## Extension Provider And Orchestration Standard Set

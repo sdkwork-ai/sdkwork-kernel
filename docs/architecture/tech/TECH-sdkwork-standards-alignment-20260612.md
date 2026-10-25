@@ -507,7 +507,7 @@ Phase 5 utils:
 
 Phase 4 packaging:
 
-- `sdkwork.workflow.json` and `.github/workflows/package.yml` for `sdkwork-agent-server` release artifacts
+- `agent.workflow.json` and `.github/workflows/package.yml` for `sdkwork-agent-server` release artifacts
 - `deployments/` topology-linked profiles remain future work for production rollout
 
 Verification evidence (current):

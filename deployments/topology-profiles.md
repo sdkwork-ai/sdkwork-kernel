@@ -29,7 +29,7 @@ These dispatch through `scripts/sdkwork-command.mjs` into `scripts/kernel-dev.mj
 
 ## Packaging And Release
 
-- Workflow config: [`../sdkwork.workflow.json`](../sdkwork.workflow.json)
+- Workflow config: [`../agent.workflow.json`](../agent.workflow.json)
 - GitHub packaging entry: [`.github/workflows/package.yml`](../.github/workflows/package.yml)
 - Container reference: [`docker/Dockerfile`](./docker/Dockerfile) and [`docker/docker-compose.cloud.yml`](./docker/docker-compose.cloud.yml)
 - Kubernetes reference: [`kubernetes/`](./kubernetes/)

@@ -34,10 +34,10 @@ export function validatePlatformUtils({ kernelRoot, errors, readFileIfExists }) 
     }
   }
 
-  const workflowPath = path.join(kernelRoot, 'sdkwork.workflow.json');
+  const workflowPath = path.join(kernelRoot, 'agent.workflow.json');
   const workflowText = readFileIfExists(workflowPath);
   if (!workflowText) {
-    errors.push('sdkwork.workflow.json must exist for sdkwork-utils sibling checkout');
+    errors.push('agent.workflow.json must exist for sdkwork-utils sibling checkout');
     return;
   }
 
@@ -45,13 +45,13 @@ export function validatePlatformUtils({ kernelRoot, errors, readFileIfExists }) 
   try {
     workflowConfig = JSON.parse(workflowText);
   } catch (error) {
-    errors.push(`invalid json: sdkwork.workflow.json: ${error.message}`);
+    errors.push(`invalid json: agent.workflow.json: ${error.message}`);
     return;
   }
 
   const dependencyIds = new Set((workflowConfig.dependencies || []).map((entry) => entry.id));
   if (!dependencyIds.has('sdkwork-utils')) {
-    errors.push('sdkwork.workflow.json must declare sdkwork-utils sibling checkout');
+    errors.push('agent.workflow.json must declare sdkwork-utils sibling checkout');
   }
 
   const utilsTestPath = path.join(kernelRoot, 'scripts/dev/sdkwork-kernel-utils-standard.test.mjs');

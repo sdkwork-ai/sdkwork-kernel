@@ -414,28 +414,28 @@ export function validatePlatformIntegration({ kernelRoot, errors, ensureFile, re
     );
   }
 
-  const workflowConfigPath = path.join(kernelRoot, 'sdkwork.workflow.json');
+  const workflowConfigPath = path.join(kernelRoot, 'agent.workflow.json');
   if (!fs.existsSync(workflowConfigPath)) {
-    errors.push('sdkwork.workflow.json must exist for Phase 4 packaging entrypoint');
+    errors.push('agent.workflow.json must exist for Phase 4 packaging entrypoint');
   } else {
     let workflowConfig;
     try {
       workflowConfig = JSON.parse(fs.readFileSync(workflowConfigPath, 'utf8'));
     } catch (error) {
-      errors.push(`invalid json: sdkwork.workflow.json: ${error.message}`);
+      errors.push(`invalid json: agent.workflow.json: ${error.message}`);
       workflowConfig = null;
     }
     if (workflowConfig) {
       if (workflowConfig.app?.id !== 'sdkwork-kernel') {
-        errors.push('sdkwork.workflow.json app.id must be sdkwork-kernel');
+        errors.push('agent.workflow.json app.id must be sdkwork-kernel');
       }
       if (!Array.isArray(workflowConfig.targets) || workflowConfig.targets.length === 0) {
-        errors.push('sdkwork.workflow.json must declare at least one package target');
+        errors.push('agent.workflow.json must declare at least one package target');
       }
       const buildSteps = workflowConfig.lifecycle?.build;
       if (!Array.isArray(buildSteps) || !buildSteps.some((step) => String(step.run || '').includes('verify-kernel-audit-remediation.mjs'))) {
         errors.push(
-          'sdkwork.workflow.json lifecycle.build must run scripts/verify-kernel-audit-remediation.mjs'
+          'agent.workflow.json lifecycle.build must run scripts/verify-kernel-audit-remediation.mjs'
         );
       }
     }
@@ -449,8 +449,8 @@ export function validatePlatformIntegration({ kernelRoot, errors, ensureFile, re
     if (packageWorkflow && !packageWorkflow.includes('sdkwork-github-workflow/.github/workflows/sdkwork-package.yml')) {
       errors.push('.github/workflows/package.yml must call sdkwork-github-workflow reusable packaging workflow');
     }
-    if (packageWorkflow && !packageWorkflow.includes('config_path: sdkwork.workflow.json')) {
-      errors.push('.github/workflows/package.yml must pass config_path: sdkwork.workflow.json');
+    if (packageWorkflow && !packageWorkflow.includes('config_path: agent.workflow.json')) {
+      errors.push('.github/workflows/package.yml must pass config_path: agent.workflow.json');
     }
   }
 }

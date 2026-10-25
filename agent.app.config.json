@@ -222,7 +222,7 @@
   },
   "metadata": {
     "topologySpec": "specs/topology.spec.json",
-    "workflowManifest": "sdkwork.workflow.json",
+    "workflowManifest": "agent.workflow.json",
     "deploymentConfig": "etc/sdkwork.deployment.config.json",
     "standardOwner": "sdkwork-platform"
   }

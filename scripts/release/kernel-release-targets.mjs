@@ -15,7 +15,7 @@ export function readJsonFile(filePath) {
 
 export function readReleaseContext(kernelRoot, env = process.env) {
   const manifest = readJsonFile(path.join(kernelRoot, 'agent.app.config.json'));
-  const workflow = readJsonFile(path.join(kernelRoot, 'sdkwork.workflow.json'));
+  const workflow = readJsonFile(path.join(kernelRoot, 'agent.workflow.json'));
   const version =
     env.SDKWORK_PACKAGE_VERSION?.trim() ||
     env.SDKWORK_RELEASE_VERSION?.trim() ||
@@ -148,7 +148,7 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
       errors.push(`workflow target ${target.id} package id must be canonical: ${canonicalPackageId}`);
     }
     if (targetByPackageId.has(packageId)) {
-      errors.push(`duplicate sdkwork.workflow.json package id: ${packageId}`);
+      errors.push(`duplicate agent.workflow.json package id: ${packageId}`);
       continue;
     }
     targetByPackageId.set(packageId, target);
@@ -174,7 +174,7 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
   for (const [packageId, pkg] of packageById.entries()) {
     const target = targetByPackageId.get(packageId);
     if (!target) {
-      errors.push(`sdkwork.workflow.json targets must include manifest package id ${packageId}`);
+      errors.push(`agent.workflow.json targets must include manifest package id ${packageId}`);
       continue;
     }
     compareField(errors, packageId, 'deploymentProfile', pkg.deploymentProfile, 'target deploymentProfile', target.deploymentProfile);
@@ -195,7 +195,7 @@ export function validateReleaseTargetMatrix({ manifest, workflow, version }) {
 
   for (const packageId of targetByPackageId.keys()) {
     if (!packageById.has(packageId)) {
-      errors.push(`sdkwork.workflow.json target ${packageId} must exist in agent.app.config.json install packages`);
+      errors.push(`agent.workflow.json target ${packageId} must exist in agent.app.config.json install packages`);
     }
   }
 
@@ -219,7 +219,7 @@ export function resolveLifecycleTarget({ kernelRoot, env = process.env, commandN
     errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in agent.app.config.json install packages`);
   }
   if (packageId && !target) {
-    errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in sdkwork.workflow.json targets`);
+    errors.push(`SDKWORK_PACKAGE_ID ${packageId} is not declared in agent.workflow.json targets`);
   }
 
   if (errors.length > 0) {

@@ -66,7 +66,7 @@ Adopt platform frameworks for kernel runtime surfaces with executable verificati
 
 ### Phase 4 — packaging (complete)
 
-- `sdkwork.workflow.json` packages `sdkwork-agent-server`.
+- `agent.workflow.json` packages `sdkwork-agent-server`.
 - `.github/workflows/package.yml` calls reusable `sdkwork-github-workflow` packaging workflow.
 
 ### Phase 5 — `sdkwork-utils` integration (complete)

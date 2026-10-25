@@ -24,9 +24,9 @@ assert.match(
   'sdkwork-agent-database must declare sdkwork-utils-rust for postgres-sync alignment'
 );
 
-const workflow = JSON.parse(read('sdkwork.workflow.json'));
+const workflow = JSON.parse(read('agent.workflow.json'));
 const dependencyIds = new Set((workflow.dependencies || []).map((dependency) => dependency.id));
-assert(dependencyIds.has('sdkwork-utils'), 'sdkwork.workflow.json must declare sdkwork-utils sibling checkout');
+assert(dependencyIds.has('sdkwork-utils'), 'agent.workflow.json must declare sdkwork-utils sibling checkout');
 
 const postgresPoolSource = read('sdkwork-agent-database/src/postgres_pool.rs');
 assert.match(

@@ -98,8 +98,8 @@ function writeReleaseWorkspaceFixture(workspaceRoot) {
       topologySpec: 'specs/topology.spec.json',
     },
   });
-  writeJson(path.join(workspaceRoot, 'sdkwork.workflow.json'), {
-    schemaVersion: '2026-06-06.sdkwork.workflow.v1',
+  writeJson(path.join(workspaceRoot, 'agent.workflow.json'), {
+    schemaVersion: '2026-06-06.agent.workflow.v1',
     app: {
       id: 'sdkwork-kernel',
       repository: 'sdkwork-ai/sdkwork-kernel',
@@ -348,7 +348,7 @@ test('app manifest requires SBOM and checksum evidence', () => {
 });
 
 test('workflow declares SBOM generation and release validation', () => {
-  const workflow = JSON.parse(fs.readFileSync(path.join(root, 'sdkwork.workflow.json'), 'utf8'));
+  const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agent.workflow.json'), 'utf8'));
   const packageSteps = workflow.lifecycle?.package ?? [];
   const sbomSteps = workflow.lifecycle?.sbom ?? [];
   const validateSteps = workflow.lifecycle?.validate ?? [];
