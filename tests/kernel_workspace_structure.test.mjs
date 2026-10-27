@@ -516,7 +516,7 @@ test('platform packaging records agent.workflow.json and package workflow entryp
   );
   assert.match(
     packageWorkflow,
-    /config_path: sdkwork\.workflow\.json/,
+    /config_path: agent\.workflow\.json/,
     'package workflow should pass agent.workflow.json'
   );
 });
