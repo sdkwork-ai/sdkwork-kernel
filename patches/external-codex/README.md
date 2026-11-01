@@ -80,5 +80,10 @@ sha256sum patches/external-codex/0001-network-proxy-local.patch
 ## 已知状态
 
 导出于 2026-10-23。补丁落地后，`external/codex` **工作区仍保持 dirty**
-（`git -C sdkwork-kernel status` 会显示 `M external/codex`），这是**有意为之**：
+（`git -C external/codex status` 会显示 11 个 `M` 文件），这是**有意为之**：
 它承载的是正在使用的本地改动，清掉会丢功能。需要恢复干净时再用上面的命令重放。
+
+为了让父仓库状态不再被这份「有意的 dirty」干扰，`.gitmodules` 中
+`external/codex` 声明了 `ignore = dirty`：`git -C sdkwork-kernel status`
+不再显示 `M external/codex`，但子模块 **HEAD 指针漂移仍会照常显示**，
+因此上游版本固定点失守不会被掩盖。

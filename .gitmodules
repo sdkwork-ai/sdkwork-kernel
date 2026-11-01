@@ -7,6 +7,7 @@
 [submodule "external/codex"]
 	path = external/codex
 	url = https://github.com/openai/codex.git
+	ignore = dirty
 [submodule "external/claude-code"]
 	path = external/claude-code
 	url = https://github.com/anthropics/claude-code.git
