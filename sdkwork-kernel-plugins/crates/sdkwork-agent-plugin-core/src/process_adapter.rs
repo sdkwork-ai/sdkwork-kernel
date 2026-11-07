@@ -434,7 +434,7 @@ struct BoundedReader {
 impl BoundedReader {
     fn spawn(mut reader: impl Read + Send + 'static) -> KernelResult<Self> {
         ACTIVE_OUTPUT_READERS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
                 (active < MAX_ACTIVE_OUTPUT_READERS).then_some(active + 1)
             })
             .map_err(|_| {
