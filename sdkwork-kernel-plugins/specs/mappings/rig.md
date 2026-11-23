@@ -171,7 +171,7 @@ implementations without changing kernel contracts.
 Reference source is declared at `external/rig` for upstream inspection, while
 the binding's Rust source-tree evidence points to
 `external/rig/crates/rig-core`. SDKWork adapter code is implemented as a local plugin with
-the latest registry `rig-core` pin `0.41.0` (verified 2026-07-30),
+the latest registry `rig-core` pin `0.47.0` (verified 2026-11-23),
 manifests, package lifecycle, configuration, memory SPI, knowledge SPI,
 deployment snapshots, diagnostics, and conformance contract tests. Model
 execution uses the official `rig-core` adapter when injected; otherwise the

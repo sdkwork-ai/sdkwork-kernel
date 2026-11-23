@@ -14,7 +14,7 @@
   "language_packages": {
     "rust": {
       "crate": "rig-core",
-      "version": "0.41.0",
+      "version": "0.47.0",
       "optional": true
     }
   },

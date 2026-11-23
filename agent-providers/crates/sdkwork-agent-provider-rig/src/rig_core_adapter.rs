@@ -4,9 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rig_core::client::CompletionClient;
-use rig_core::completion::{AssistantContent, CompletionModel};
-use rig_core::providers::openai;
+use rig_core::completion::CompletionRequest;
+use rig_core::error::ProviderError;
+use rig_core::providers::openai::OpenAIConfig;
 use sdkwork_agent_kernel::{
     HostProvider, KernelError, KernelErrorSource, KernelResult, KnowledgeDocument,
     KnowledgeSearchRequest, ModelRequest, ModelResponse, SecretRef,
@@ -57,10 +57,7 @@ impl RigInflightRegistry {
             .entries
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        entries.insert(
-            model_request_id.to_string(),
-            (handle, Instant::now()),
-        );
+        entries.insert(model_request_id.to_string(), (handle, Instant::now()));
     }
 
     /// Abort the in-flight task for `model_request_id` and report whether one
@@ -141,16 +138,19 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
     fn invoke_model(&self, request: ModelRequest) -> KernelResult<ModelResponse> {
         let secret_ref = SecretRef::new(&self.api_key_secret_ref, "Rig OpenAI API key");
         let secret = self.host.resolve_secret(secret_ref)?;
-        // `CompletionsClient` is the chat-completions client. Since rig-core
-        // 0.42 the default `openai::Client` targets the `/v1/responses`
-        // endpoint instead, which OpenAI-compatible vendors behind a custom
-        // `llm.rig.base_url` (deepseek, qwen, …) do not serve.
-        let mut builder = openai::CompletionsClient::builder().api_key(secret.expose_value());
-        if let Some(base_url) = self.base_url.as_deref().filter(|value| !value.trim().is_empty())
+        // `OpenAI::chat` is the chat-completions route (`POST
+        // /v1/chat/completions`). The Responses route that
+        // `OpenAIConfig::completion` selects by default is not served by the
+        // OpenAI-compatible vendors behind a custom `llm.rig.base_url`
+        // (deepseek, qwen, …).
+        let mut config = OpenAIConfig::new(secret.expose_value());
+        if let Some(base_url) = self
+            .base_url
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
         {
-            builder = builder.base_url(base_url);
+            config = config.with_base_url(base_url);
         }
-        let client = builder.build().map_err(client_build_failure)?;
         // The catalog placeholder (`rig.default-chat`) is the session
         // binding's default model label, not a real upstream model: fall back
         // to the configured default model so a custom provider call never
@@ -160,25 +160,17 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
             .clone()
             .filter(|model_id| model_id != ids::DEFAULT_MODEL_ID)
             .unwrap_or_else(|| self.default_model_id.clone());
-        let model = client.completion_model(&model_id);
+        let model = config.client().chat(model_id);
         let prompt = request.effective_prompt_text();
         let timeout = Duration::from_millis(request.timeout_ms.unwrap_or(120_000));
         let (sender, receiver) = mpsc::sync_channel(1);
         let task = self.runtime.spawn(async move {
             let result = model
-                .completion_request(prompt)
-                .send()
+                .call(CompletionRequest::new(prompt))
                 .await
                 .map_err(completion_failure)
                 .and_then(|response| {
-                    let text = response
-                        .choice
-                        .iter()
-                        .filter_map(|content| match content {
-                            AssistantContent::Text(text) => Some(text.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<String>();
+                    let text = response.text();
                     (!text.is_empty())
                         .then_some(text)
                         .ok_or_else(empty_response)
@@ -197,10 +189,11 @@ impl RigBackendExecutor for RigCoreOpenAiExecutor {
             // A cancel aborted the task, so the sender dropped without
             // delivering a result.
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return Ok(
-                    ModelResponse::cancelled(request.model_request_id, ids::MODEL_PROVIDER_ID)
-                        .with_finish_reason("cancelled"),
-                );
+                return Ok(ModelResponse::cancelled(
+                    request.model_request_id,
+                    ids::MODEL_PROVIDER_ID,
+                )
+                .with_finish_reason("cancelled"));
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 task.abort();
@@ -225,12 +218,12 @@ fn provider_unavailable() -> KernelError {
     }
 }
 
-/// Maps a rig-core 0.42 [`CompletionError`] into a kernel provider error,
-/// keeping the typed diagnostics the upgraded crate now carries (transport
-/// request id, HTTP status) without copying the raw upstream body into the
-/// kernel error surface. Transport-level failures stay retryable.
-fn completion_failure(error: rig_core::completion::CompletionError) -> KernelError {
-    let retryable = matches!(error, rig_core::completion::CompletionError::HttpError(_));
+/// Maps a rig-core [`ProviderError`] into a kernel provider error, keeping the
+/// typed diagnostics the crate carries (transport request id, HTTP status)
+/// without copying the raw upstream body into the kernel error surface.
+/// Transport-level and retryable-reply failures stay retryable.
+fn completion_failure(error: ProviderError) -> KernelError {
+    let retryable = error.is_retryable();
     let mut failure = KernelError::provider_error(
         "rig_completion_failed",
         format!("Rig chat-completions request failed: {error}"),
@@ -246,16 +239,6 @@ fn completion_failure(error: rig_core::completion::CompletionError) -> KernelErr
         failure = failure.with_detail("rig.response_status", status.as_u16().to_string());
     }
     failure
-}
-
-fn client_build_failure(error: rig_core::http_client::Error) -> KernelError {
-    KernelError::provider_error(
-        "rig_client_build_failed",
-        format!("failed to build the Rig chat-completions client: {error}"),
-    )
-    .with_provider(ids::MODEL_PROVIDER_ID)
-    .with_safe_message("Rig model backend is unavailable")
-    .from_source(KernelErrorSource::Provider)
 }
 
 fn empty_response() -> KernelError {
@@ -280,11 +263,13 @@ fn elapsed_timeout(timeout: Duration) -> KernelError {
 #[cfg(all(test, feature = "rig-core-adapter"))]
 mod tests {
     use super::*;
+    use rig_core::http_client::StatusCode;
+    use rig_core::ProviderResponseError;
     use sdkwork_agent_kernel::KernelErrorKind;
 
     #[test]
     fn completion_failure_preserves_rig_diagnostics_without_leaking_rig_types() {
-        let failure = completion_failure(rig_core::completion::CompletionError::ProviderError(
+        let failure = completion_failure(ProviderError::Provider(
             "upstream rejected the request".to_string(),
         ));
 
@@ -305,11 +290,63 @@ mod tests {
 
     #[test]
     fn transport_failures_stay_retryable() {
-        let failure = completion_failure(rig_core::completion::CompletionError::HttpError(
-            rig_core::http_client::Error::NoHeaders,
-        ));
+        let failure = completion_failure(ProviderError::Http(Arc::new(
+            rig_core::http_client::Error::transient(std::io::Error::other("connection reset")),
+        )));
 
         assert!(failure.retryable());
+    }
+
+    /// The 0.47 crate classifies a preserved reply by its HTTP status; the
+    /// adapter must carry that verdict through instead of treating only
+    /// transport failures as retryable.
+    #[test]
+    fn provider_reply_status_decides_retryability_and_is_kept_as_a_detail() {
+        let overloaded = completion_failure(ProviderError::ProviderResponse(
+            ProviderResponseError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                r#"{"error":{"message":"upstream overloaded"}}"#,
+            ),
+        ));
+        assert!(
+            overloaded.retryable(),
+            "a 5xx provider reply stays retryable"
+        );
+
+        let rejected = completion_failure(ProviderError::ProviderResponse(
+            ProviderResponseError::new(
+                StatusCode::BAD_REQUEST,
+                r#"{"error":{"message":"bad request"}}"#,
+            ),
+        ));
+        assert!(!rejected.retryable(), "a 4xx provider reply is final");
+
+        let KernelError::Structured { info } = &overloaded else {
+            panic!("completion_failure must return a structured kernel error");
+        };
+        assert!(info
+            .details
+            .iter()
+            .any(|(key, value)| key == "rig.response_status" && value == "500"));
+    }
+
+    #[test]
+    fn provider_request_id_is_kept_as_a_detail() {
+        let failure = completion_failure(
+            ProviderError::from_http_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":{"message":"slow down"}}"#,
+            )
+            .with_provider_request_id(Some("req_rig_1".to_string())),
+        );
+
+        let KernelError::Structured { info } = &failure else {
+            panic!("completion_failure must return a structured kernel error");
+        };
+        assert!(info
+            .details
+            .iter()
+            .any(|(key, value)| key == "rig.provider_request_id" && value == "req_rig_1"));
     }
 
     #[test]
